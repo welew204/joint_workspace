@@ -6,6 +6,9 @@ __pycache__/
 # actual vid assets
 *.mp4
 *.mov
+*.png
+pose_est_tutorial/posEstVids/
+CARs_app/sample_CARs/
 
 # Distribution / packaging
 .Python
