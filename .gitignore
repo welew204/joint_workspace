@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# actual vid assets
+*.mp4
+*.mov
+
 # Distribution / packaging
 .Python
 
