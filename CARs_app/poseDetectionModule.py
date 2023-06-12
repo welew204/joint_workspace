@@ -9,7 +9,7 @@ from pprint import pprint
 
 
 class poseDetector():
-    def __init__(self, mode=False, modelComplexity=2, smooth_landmarks=True, detectionConfidence=0.5, trackConfidence=0.5):
+    def __init__(self, mode=False, modelComplexity=2, smooth_landmarks=True, detectionConfidence=0.5, trackConfidence=0.9):
         self.mode = mode
         self.modelComplexity = modelComplexity
         self.smooth = smooth_landmarks
