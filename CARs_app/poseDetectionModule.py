@@ -68,8 +68,11 @@ def main():
     while True:
         success, img = cap.read()
         img = detector.findPose(img)
-        lmList = detector.findPosition(img, draw=False)
+        lmList = detector.findPosition(img, draw=True)
+        r_lmList = detector.findRealPosition(img)
+        """ pprint(lmList[14]) """
         pprint(lmList[14])
+        # pprint(r_lmList[14])
         # draw a specific joint ONLY (set draw to False, above)
         cv2.circle(img, (lmList[14][1], lmList[14][2]),
                    25, (0, 0, 255), cv2.FILLED)

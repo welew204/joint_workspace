@@ -7,6 +7,7 @@ import open3d as o3d
 from pprint import pprint
 import time
 import json
+import math
 from collections import defaultdict
 
 # handle video ingest
@@ -105,183 +106,255 @@ def normalize_joint_center(real_landmarks, target_joint_id, moving_joint_id):
     median_radius = sorted(radii)[len(mj_array)//2]
     longest_radius = sorted(radii)[-1]
 
-    return longest_radius, idealized_joint_center, final_mj_path
+    return avg_radius, idealized_joint_center, final_mj_path
 
 
 def partition_mj_path(jt_center, mj_path):
-    epsilon = .01
-    k_to_q = {"000": 0,
-              "001": 1,
-              "010": 2,
-              "011": 3,
-              "100": 4,
-              "101": 5,
-              "110": 6,
-              "111": 7}
+    epsilon = .001
+    k_to_q = {"000": 0,  # hi-flex-abd
+              "001": 1,  # low-flex-abd
+              "010": 2,  # low-ext-abd
+              "011": 3,  # low-ext-add
+              "100": 4,  # low-flex-add
+              "101": 5,  # hi-flex-add
+              "110": 6,  # hi-ext-add
+              "111": 7}  # hi-ext-abd
     by_quadrant = defaultdict(list)
     for i, pt in enumerate(mj_path):
         q_key = ""
+        # old version that was skewing...
         q_key += "1" if pt[0] > (jt_center[0]+epsilon) else "0"
         q_key += "1" if pt[1] > (jt_center[1]+epsilon) else "0"
         q_key += "1" if pt[2] > (jt_center[2]+epsilon) else "0"
+        # new version that is miscategorizing
+        # q_key += "1" if np.abs(pt[0]-jt_center[0]) > epsilon else "0"
+        # q_key += "1" if np.abs(pt[1]-jt_center[1]) > epsilon else "0"
+        # q_key += "1" if np.abs(pt[2]-jt_center[2]) > epsilon else "0"
         by_quadrant[k_to_q[q_key]].append(pt)
     return by_quadrant
 
-# this doesn't work that well....
+
+def scale_points_to_surface(point_path, avg_radius):
+    """point_path is a np.array of 3d points *normalized* around origin!"""
+    current_magnitudes = np.linalg.norm(point_path, axis=1)
+    scaling_factors = avg_radius / current_magnitudes
+    scaled_points = (point_path *
+                     scaling_factors[:, np.newaxis])
+    return scaled_points
 
 
-def denoise_points(mj_path):
-    point_cloud = o3d.geometry.PointCloud()
-    point_cloud.points = o3d.utility.Vector3dVector(mj_path)
+def plot_sphere(ax, rad_avg):
+    phi = np.linspace(0, np.pi, 20)
+    theta = np.linspace(0, 2 * np.pi, 40)
+    x = rad_avg * np.outer(np.sin(theta), np.cos(phi)) + jt_center[0]
+    y = rad_avg * np.outer(np.sin(theta), np.sin(phi)) + jt_center[1]
+    z = rad_avg * np.outer(np.cos(theta),
+                           np.ones_like(phi)) + jt_center[2]
 
-    # returns the points AND the index of each (remaining) point
-    filtered_cloud, _ = point_cloud.remove_statistical_outlier(
-        nb_neighbors=5, std_ratio=3.0)
+    ax.plot_wireframe(x, y, z, color='k', linewidth=0.3,
+                      rstride=1, cstride=1)
 
-    denoised_points = np.asarray(filtered_cloud.points)
+    # adding some axial planes to see better
 
-    print(f"Denoisifying removed {len(mj_path)-len(denoised_points)}")
+    # Create a meshgrid for the x, y, and z coordinates of the planes
+    p1x, p1y = np.meshgrid(np.linspace(jt_center[0]-rad_avg, jt_center[0]+rad_avg, 10),
+                           np.linspace(jt_center[1]-rad_avg, jt_center[1]+rad_avg, 10))
+    p1z = jt_center[2] * np.ones_like(p1x)
+    p2x, p2z = np.meshgrid(np.linspace(jt_center[0]-rad_avg, jt_center[0]+rad_avg, 10),
+                           np.linspace(jt_center[2]-rad_avg, jt_center[2]+rad_avg, 10))
+    p2y = jt_center[1] * np.ones_like(p2x)
+    p3y, p3z = np.meshgrid(np.linspace(jt_center[1]-rad_avg, jt_center[1]+rad_avg, 10),
+                           np.linspace(jt_center[2]-rad_avg, jt_center[2]+rad_avg, 10))
+    p3x = jt_center[0] * np.ones_like(p3y)
 
-    return denoised_points
+    # Create the figure and axes
 
-# now trying to just do a smooth curve fit...
-
-
-def smooth_path(mj_path, poly_degree):
-    x = mj_path[:, 0]
-    y = mj_path[:, 1]
-    z = mj_path[:, 2]
-    coefficients_y = np.polynomial.polynomial.polyfit(
-        x, y, poly_degree)
-    coefficients_z = np.polynomial.polynomial.polyfit(
-        x, z, poly_degree)
-    fitted_y = np.polynomial.polynomial.polyval(x, coefficients_y)
-    fitted_z = np.polynomial.polynomial.polyval(x, coefficients_z)
-
-    return (x, fitted_y, fitted_z)
+    # Plot the planes
+    ax.plot_surface(p1x, p1y, p1z, alpha=0.2, color='blue')
+    ax.plot_surface(p2x, p2y, p2z, alpha=0.2, color='red')
+    ax.plot_surface(p3x, p3y, p3z, alpha=0.2, color='green')
 
 
-def plot_CARs(avg_radius, jt_center, mvj_path_by_quadrant, sphere=True, show_smoothed=False):
-    # WILL NEED TO HAND IN MORE ARRAYs if want to see other points
-    # xc, yc, zc = tj_array[:, 0], tj_array[:, 1], tj_array[:, 2]
-    # xo, yo, zo = mj_array[:, 0], mj_array[:, 1], mj_array[:, 2]
+def plot_on_sphere(subplot_id, jt_center, mvj_path_quadrant, sphere=True):
     color_list = 'bgrcmykw'
-    fig = plt.figure(figsize=(10, 10), facecolor="w")
     ax = plt.axes(projection="3d", aspect="equal")
-    all_mv_points = []
-    for q in range(8):
-        mvj_path = np.array(mvj_path_by_quadrant[q])
-        if len(mvj_path) == 0:
-            continue
+    ax.set_xlim3d(-.75, .75)
+    ax.set_ylim3d(0, -1.5)
+    ax.set_zlim3d(-.75, .75)
+    ax.set_xlabel('X_values', fontweight='bold')
+    ax.set_ylabel('Y_values', fontweight='bold')
+    ax.set_zlabel('Z_values', fontweight='bold')
 
-        xn, yn, zn = mvj_path[:, 0], mvj_path[:, 1], mvj_path[:, 2]
+    mvj_path = np.array(mvj_path_quadrant)
 
-        # scatter_plot = ax.scatter(xo, yo, zo, marker='^')
-        ax.scatter(xn, yn, zn, s=10, marker='o', color=color_list[q])
-        # scatter_plot = ax.scatter(xc, yc, zc, marker='x')
-        if show_smoothed:
-            all_mv_points.extend(mvj_path)
+    # compute avg
+    centroid = find_centroid(mvj_path)
+    avg_displacement = centroid - jt_center
+    rad_avg = np.linalg.norm(avg_displacement)
 
+    xn, yn, zn = mvj_path[:, 0], mvj_path[:, 1], mvj_path[:, 2]
     if sphere:
         phi = np.linspace(0, np.pi, 20)
         theta = np.linspace(0, 2 * np.pi, 40)
-        x = avg_radius * np.outer(np.sin(theta), np.cos(phi)) + jt_center[0]
-        y = avg_radius * np.outer(np.sin(theta), np.sin(phi)) + jt_center[1]
-        z = avg_radius * np.outer(np.cos(theta),
-                                  np.ones_like(phi)) + jt_center[2]
+        x = rad_avg * np.outer(np.sin(theta), np.cos(phi)) + jt_center[0]
+        y = rad_avg * np.outer(np.sin(theta), np.sin(phi)) + jt_center[1]
+        z = rad_avg * np.outer(np.cos(theta),
+                               np.ones_like(phi)) + jt_center[2]
 
         ax.plot_wireframe(x, y, z, color='k', linewidth=0.3,
                           rstride=1, cstride=1)
 
-    if show_smoothed:
-        all_pts = np.array(all_mv_points)
-        fitted_x, fitted_y, fitted_z = smooth_path(all_pts, 15)
-        plt.plot(fitted_x, fitted_y, fitted_z, 'r-', label='fitted curve')
+        # adding some axial planes to see better
 
+        # Create a meshgrid for the x, y, and z coordinates of the planes
+        p1x, p1y = np.meshgrid(np.linspace(jt_center[0]-rad_avg, jt_center[0]+rad_avg, 10),
+                               np.linspace(jt_center[1]-rad_avg, jt_center[1]+rad_avg, 10))
+        p1z = jt_center[2] * np.ones_like(p1x)
+        p2x, p2z = np.meshgrid(np.linspace(jt_center[0]-rad_avg, jt_center[0]+rad_avg, 10),
+                               np.linspace(jt_center[2]-rad_avg, jt_center[2]+rad_avg, 10))
+        p2y = jt_center[1] * np.ones_like(p2x)
+        p3y, p3z = np.meshgrid(np.linspace(jt_center[1]-rad_avg, jt_center[1]+rad_avg, 10),
+                               np.linspace(jt_center[2]-rad_avg, jt_center[2]+rad_avg, 10))
+        p3x = jt_center[0] * np.ones_like(p3y)
+
+        # Create the figure and axes
+
+        # Plot the planes
+        ax.plot_surface(p1x, p1y, p1z, alpha=0.2, color='blue')
+        ax.plot_surface(p2x, p2y, p2z, alpha=0.2, color='red')
+        ax.plot_surface(p3x, p3y, p3z, alpha=0.2, color='green')
+
+    # plot the radius (to the centroid)...
+    ax.plot([centroid[0], jt_center[0]], [
+        centroid[1], jt_center[1]], zs=[centroid[2], jt_center[2]])
+
+    # calculate + scale each vector to the surface of the sphere...
+    mvj_normalized_to_joint_center = mvj_path-jt_center
+    current_magnitudes = np.linalg.norm(mvj_normalized_to_joint_center, axis=1)
+    scaling_factors = rad_avg / current_magnitudes
+    scaled_points = (mvj_normalized_to_joint_center *
+                     scaling_factors[:, np.newaxis]) + jt_center
+    scaled_points_CHECK = scale_points_to_surface(
+        mvj_normalized_to_joint_center, rad_avg) + jt_center
+
+    sp_x, sp_y, sp_z = scaled_points[:,
+                                     0], scaled_points[:, 1], scaled_points[:, 2]
+    # original path points of THIS quadrant
+    # ax.scatter(xn, yn, zn, s=5, marker='.', color="black")
+    ax.scatter(sp_x, sp_y, sp_z, s=15, marker='o',
+               color=color_list[subplot_id-1])
+
+    # plotting some raw_data:
+    # origin (aka the middle of the pelvis)
     ax.scatter(0, 0, 0, marker='X', s=50, color='green')
-    ax.scatter(
-        jt_center[0], jt_center[1], jt_center[2], s=50, color='#f07b2e')
-    plt.title(
-        f"Display of Moving Joint Path around Target Joint", fontsize=30)
-    ax.set_xlabel('X_values', fontweight='bold')
-    ax.set_ylabel('Y_values', fontweight='bold')
-    ax.set_zlabel('Z_values', fontweight='bold')
-    ax.set_xlim3d(-0.5, 0.5)
-    ax.set_ylim3d(0, -1.0)
-    ax.set_zlim3d(-0.5, 0.5)
+    # original path points of TOTAL joint path motion
+    mjp_x, mjp_y, mjp_z = mj_path_array[:,
+                                        0], mj_path_array[:, 1], mj_path_array[:, 2]
+    ax.scatter(mjp_x, mjp_y, mjp_z, s=5, marker='.', color="black")
+    # nose
+    nose_coord = []
+    for frame in sample1:
+        nose = frame[0]
+        hx, hy, hz = nose[1:]
+        nose_coord.append([hx, hy, hz])
+    nose_coord = np.array(nose_coord)
+    nose_coord_avg = find_centroid(nose_coord)
+    ax.scatter(nose_coord_avg[0], nose_coord_avg[1],
+               nose_coord_avg[2], marker='X', s=50, color='yellow')
+    # left shoulder
+    lGH_coord = []
+    for frame in sample1:
+        lGH = frame[11]
+        hx, hy, hz = lGH[1:]
+        lGH_coord.append([hx, hy, hz])
+    lGH_coord = np.array(lGH_coord)
+    lGH_coord_avg = find_centroid(lGH_coord)
+    ax.scatter(lGH_coord_avg[0], lGH_coord_avg[1],
+               lGH_coord_avg[2], marker='X', s=50, color='orange')
 
-    # outfile = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/full_CAR_lower_threshold.png"
-    outfile = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/full_CAR_higher_threshold.png"
-    # plt.savefig(outfile)
     plt.show()
 
 
-def calc_CARs_volume(jt_center, mj_path_array):
-    q1_pts = []
-    q2_pts = []
-    q3_pts = []
-    q4_pts = []
-    q5_pts = []
-    q6_pts = []
-    q7_pts = []
-    q8_pts = []
-    for pt in mj_path_array:
-        # determining q1
-        if pt[0] > jt_center[0] and pt[1] > jt_center[1] and pt[2] > jt_center[2]:
-            q1_pts.append(pt)
-        # determining q2
-        elif pt[0] < jt_center[0] and pt[1] > jt_center[1] and pt[2] > jt_center[2]:
-            q2_pts.append(pt)
-        # determining q3
-        elif pt[0] < jt_center[0] and pt[1] > jt_center[1] and pt[2] < jt_center[2]:
-            q3_pts.append(pt)
-        # determining q4
-        elif pt[0] > jt_center[0] and pt[1] > jt_center[1] and pt[2] < jt_center[2]:
-            q4_pts.append(pt)
-        # determining q5
-        elif pt[0] > jt_center[0] and pt[1] < jt_center[1] and pt[2] > jt_center[2]:
-            q5_pts.append(pt)
-        # determining q6
-        elif pt[0] < jt_center[0] and pt[1] < jt_center[1] and pt[2] > jt_center[2]:
-            q6_pts.append(pt)
-        # determining q7
-        elif pt[0] < jt_center[0] and pt[1] < jt_center[1] and pt[2] < jt_center[2]:
-            q7_pts.append(pt)
-        # determining q8
-        elif pt[0] > jt_center[0] and pt[1] < jt_center[1] and pt[2] < jt_center[2]:
-            q8_pts.append(pt)
-    print(q1_pts)
+def find_centroid(quadrant_mvj_path):
+    """Takes an np.array() as input, returns a single 3d vector as np.array()"""
+    length, dim = np.shape(quadrant_mvj_path)
+
+    avg_x = np.sum(quadrant_mvj_path[:, 0])/length
+    avg_y = np.sum(quadrant_mvj_path[:, 1])/length
+    avg_z = np.sum(quadrant_mvj_path[:, 2])/length
+    centroid = np.array([avg_x, avg_y, avg_z])
+    return centroid
 
 
-def compute_CARs_hull(target_joint_pose_id, moving_joint_pose_id, real_landmarks, draw=True):
-    target_workspace_lms = []
-    for frame in real_landmarks:
-        # NEED TO handle if point is not in frame (just skip)
-        target_joint = frame[target_joint_pose_id][1:]
-        target_workspace_lms.append(target_joint)
-        moving_bone_end = frame[moving_joint_pose_id][1:]
-        target_workspace_lms.append(moving_bone_end)
-    points = np.array(target_workspace_lms, dtype=float)
-    workspace = ConvexHull(points)
-    volume = workspace.volume
+def calc_spherical_surface_area(coords, radius):
+    # given coords in (lat, long) in radians
+    # # !!! order of points matter! they must be in a 'ring'; Clockwise will be positive,
+    # CC will be negative
+    #  and radius of sphere that shape is on surface of
+    # return SA of spherical shape
+    area = 0
+    num_of_pts = len(coords)
+    x1 = coords[num_of_pts-1][0]
+    y1 = coords[num_of_pts-1][1]
+    for i in range(num_of_pts):
+        x2 = coords[i][0]
+        y2 = coords[i][1]
+        area += (x2 - x1) * (2 + np.sin(y1) + np.sin(y2))
+        x1 = x2
+        y1 = y2
+    area_of_spherical_polygon = (area * radius**2) / 2
+    return area_of_spherical_polygon
 
-    if draw == True:
-        x, y, z = points[:, 0], points[:, 1], points[:, 2]
-        # plt.style.use('seaborn')
-        fig = plt.figure(figsize=(20, 10), facecolor="w")
-        ax = plt.axes(projection="3d")
-        scatter_plot = ax.scatter3D(x, y, z)
-        for simplex in workspace.simplices:
-            ax.plot3D(points[simplex, 0], points[simplex, 1],
-                      points[simplex, 2], 's-')
 
-        plt.title(f"Workspace of joint {target_joint_pose_id}", fontsize=30)
-        ax.set_xlabel('X_values', fontweight='bold')
-        ax.set_ylabel('Y_values', fontweight='bold')
+def convert_latlon_to_cartesian(latlon_rad, radius_of_sphere):
+    lat, lon = latlon_rad[0], latlon_rad[1]
+    # using this formula: https://stackoverflow.com/a/1185413/19589299
+    x = radius_of_sphere * np.cos(lat) * np.cos(lon)
+    y = radius_of_sphere * np.cos(lat) * np.sin(lon)
+    z = radius_of_sphere * np.sin(lat)
+    return np.array([x, y, z])
 
-        plt.show()
 
-    return volume
+def convert_cartesian_to_latlon_rad(coords_cart, radius_of_sphere):
+    lat = np.arcsin(coords_cart[2] / radius_of_sphere)
+    lon = np.arctan2(coords_cart[1], coords_cart[0])
+    return lat, lon
+
+
+def draw_all_points_on_sphere(avg_radius, jt_center, all_mvj_points):
+    # original path points of TOTAL joint path motion
+    ax = plt.axes(projection="3d", aspect="equal")
+    ax.set_xlim3d(-.75, .75)
+    ax.set_ylim3d(0, -1.5)
+    ax.set_zlim3d(-.75, .75)
+    ax.set_xlabel('X_values', fontweight='bold')
+    ax.set_ylabel('Y_values', fontweight='bold')
+    ax.set_zlabel('Z_values', fontweight='bold')
+
+    mjp_x, mjp_y, mjp_z = all_mvj_points[:,
+                                         0], all_mvj_points[:, 1], all_mvj_points[:, 2]
+    # ax.scatter(mjp_x, mjp_y, mjp_z, s=2, marker='.', color="black")
+    ax.scatter(jt_center[0], jt_center[1], jt_center[2],
+               s=20, marker='X', color="red")
+    normalized_all_pts = all_mvj_points - jt_center
+    # these scaled_points are oriented around Origin (0,0,0)
+    scaled_points = scale_points_to_surface(normalized_all_pts,
+                                            avg_radius)
+    # converting points to lat-lon
+    all_pts_as_lat_lon = [convert_cartesian_to_latlon_rad(
+        pt, avg_radius) for pt in scaled_points]
+    full_path_SA = calc_spherical_surface_area(all_pts_as_lat_lon, avg_radius)
+    print("Surface area of visited region: ", abs(full_path_SA))
+
+    # moving scale dpoints back to be around jt_center...
+    scaled_points_to_plot = scaled_points + jt_center
+    # plotting them
+    sp_x, sp_y, sp_z = scaled_points_to_plot[:,
+                                             0], scaled_points_to_plot[:, 1], scaled_points_to_plot[:, 2]
+    ax.scatter(sp_x, sp_y, sp_z, s=15, marker='o',
+               color='orange')
+    plot_sphere(ax, avg_radius)
+    plt.show()
 
 
 # map resultant workspace-zone onto video??
@@ -311,10 +384,32 @@ if __name__ == "__main__":
     sample1 = vid_runs[list(vid_runs.keys())[8]]
     avg_radius, jt_center, mj_path_array = normalize_joint_center(
         sample1, 12, 14)
-    denoised_pts = denoise_points(mj_path_array)
-    by_quadrant = partition_mj_path(jt_center, denoised_pts)
-    plot_CARs(avg_radius, jt_center, by_quadrant,
-              sphere=True, show_smoothed=True)
+    by_quadrant = partition_mj_path(jt_center, mj_path_array)
+    i = 1
+    # trying out running the entire path of points...
+    # plot_on_sphere(i, jt_center, mj_path_array)
+    # ^^ this should really be done in a new function that:
+    # > calculates the avg radius differently (right now it's really small ~.1)
+
+    # plotting all points onto the sphere, calculating SA
+    draw_all_points_on_sphere(avg_radius, jt_center, mj_path_array)
+
+    for q, pts in by_quadrant.items():
+        """if len(pts) < 5:
+            i += 1
+            continue"""
+        # plot_by_quadrant(i, jt_center, pts, planar_tangent=True)
+        plot_on_sphere(i, jt_center, pts)
+        i += 1
+        print("hi Dr.DD")
+        plt.clf()
+    plt.legend(loc="best")
+
+    # save the plt to a file!
+
+    plt.show()
+
+    # plot_CARs(avg_radius, jt_center, by_quadrant, sphere=True, show_smoothed=False)
     # calc_CARs_volume(jt_center, mj_path_array)
 
     # result_volume = compute_CARs_volume(12, 14, real_lm_list)
