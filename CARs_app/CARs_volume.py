@@ -1,9 +1,9 @@
 import cv2
 import poseDetectionModule as pm
 import numpy as np
-from scipy.spatial import ConvexHull
+
 import matplotlib.pyplot as plt
-import open3d as o3d
+
 from pprint import pprint
 import time
 import json
@@ -14,6 +14,8 @@ from collections import defaultdict
 
 
 def new_CARs_vid(camera_int, filename):
+    """builds new file from device camera stream (given by 'camera_int'), 
+    saves in given filepath as mp4v"""
     cap = cv2.VideoCapture(camera_int)
 
     # size must be defined according to capture (?)
@@ -45,6 +47,7 @@ def new_CARs_vid(camera_int, filename):
 
 
 def process_CARs_vid(vid_path):
+    """OLD flow for generating cv2 frames from video (from given vid_path) // output: real_landmark_list"""
     cap = cv2.VideoCapture(vid_path)
     real_lmList = []
     pTime = 0
@@ -110,15 +113,16 @@ def normalize_joint_center(real_landmarks, target_joint_id, moving_joint_id):
 
 
 def partition_mj_path(jt_center, mj_path):
-    epsilon = .001
-    k_to_q = {"000": 0,  # hi-flex-abd
-              "001": 1,  # low-flex-abd
-              "010": 2,  # low-ext-abd
-              "011": 3,  # low-ext-add
-              "100": 4,  # low-flex-add
-              "101": 5,  # hi-flex-add
-              "110": 6,  # hi-ext-add
-              "111": 7}  # hi-ext-abd
+    epsilon = .001  # make larger if I want to treat close values as boundary values
+    # trying to correlate these w. color! aka ... color_list = 'bgrcmykw'
+    k_to_q = {"000": 0,
+              "001": 1,
+              "010": 2,
+              "011": 3,
+              "100": 4,
+              "101": 5,
+              "110": 6,
+              "111": 7}
     by_quadrant = defaultdict(list)
     for i, pt in enumerate(mj_path):
         q_key = ""
@@ -133,9 +137,127 @@ def partition_mj_path(jt_center, mj_path):
         by_quadrant[k_to_q[q_key]].append(pt)
     return by_quadrant
 
+# these 4 following functions are crucial for a per-zone analysis of the volume
+
+
+def in_order_partition_mj_path(jt_center, mj_path):
+    epsilon = .001
+    k_to_q = {
+        "100": 1,  # purple (m)
+        "101": 2,  # yellow (y)
+        "001": 3,  # black (k)
+        "011": 4,  # green (g)
+        "111": 5,  # red (r)
+        "010": 6,  # blue (b)
+        "110": 7,  # cyan (c)
+        "000": 8   # white (w)
+    }
+    in_path_order = {
+        1: [],  # purple (m)
+        2: [],  # yellow (y)
+        3: [],  # black (k)
+        4: [],  # green (g)
+        5: [],  # red (r)
+        6: [],  # blue (b)
+        7: [],  # cyan (c)   # white (w)
+    }
+    for i, pt in enumerate(mj_path):
+        # FIRST filter out points too close to tell
+        # THEN tag remaining points into correct zone
+        q_key = ""
+        q_key += "1" if pt[0] > (jt_center[0] + epsilon) else "0"
+        q_key += "1" if pt[1] > (jt_center[1] + epsilon) else "0"
+        q_key += "1" if pt[2] > (jt_center[2] + epsilon) else "0"
+        # should I be adding the epsilon to the POINT?
+        in_path_order[k_to_q[q_key]].append(pt)
+    return in_path_order
+
+
+def detect_plane_crossed(pt1, pt2):
+    """given 2 points on either side of an origin plane, determine which plane they cross;
+    return the normal of that plane"""
+    inter = pt2 - pt1
+    if min(pt1[0], pt2[0]) < 0 < max(pt1[0], pt2[0]):
+        # crossed the z-y plane, where x = 0
+        plane_normal = np.array(1, 0, 0)
+    elif min(pt1[1], pt2[1]) < 0 < max(pt1[1], pt2[1]):
+        # crossed the x-z plane, where y = 0
+        plane_normal = np.array(0, 1, 0)
+    if min(pt1[2], pt2[2]) < 0 < max(pt1[2], pt2[2]):
+        # crossed the x-y plane, where z = 0
+        plane_normal = np.array(0, 0, 1)
+    return plane_normal
+
+
+def get_intersection_w_plane(plane_normal, intervening_vector, jt_center):
+    epsilon = 1e-6
+    inter_norm = np.linalg.norm(intervening_vector)
+    unit_inter = intervening_vector/inter_norm
+    inter_point = intervening_vector
+    ndotu = plane_normal.dot(unit_inter)
+    if abs(ndotu) < epsilon:
+        raise ValueError(
+            "interpolating vector is parallel to or on intervening plane")
+    # jt_center is just a stand-in for 'any point on plane' since it will be on all intervening planes
+    w = inter_point - jt_center
+    si = -plane_normal.dot(w) / ndotu
+    Psi = w + si * unit_inter + jt_center
+
+    return Psi
+
+
+def add_interpolated_and_pivots(ordered_mj_path, jt_center, avg_radius):
+    pivots = {
+        # the first point is only needed if zone 2 is visited (otherwise, only second pivot is needd)
+        1: [(0, -1, 0), (0, 0, -1)],
+        2: [(0, -1, 0)],
+        3: [(-1, 0, 0), (0, -1, 0)],
+        # second point only needed if zone 5 is visited!
+        4: [(-1, 0, 0), (0, 1, 0)],
+        5: [(0, 1, 0)],
+        6: [(0, 0, -1), (-1, 0, 0)],  # even single point entries here are ok
+        # because the interpolation will add 2 more 'boundary' points,
+        # which when combined w/ these pivots will make for a nice polygon
+        7: [(1, 0, 0), (0, 0, -1)]
+    }
+    # sort the partitioned mvj_path dict in zone order:
+    # TODO redo with python.collections.ordered_dict
+    zone_keys = list(ordered_mj_path.keys()).sort()
+    sorted_ord_mj_path = {i: ordered_mj_path[i] for i in zone_keys}
+    prev_key = zone_keys[-1]
+    for z, pts in sorted_ord_mj_path.items():
+        # get first interpolated point
+        principle = pts[0]
+        prev_point = sorted_ord_mj_path[prev_key][-1]
+
+# RIKS IDEA -----------
+# convert each point to lat/lon
+# get the average of the lats, lons to find 'linear interpolation'
+# convert THIS point BACK to (x,y,z)
+
+        inter_vector1 = principle - prev_point
+        # this subtraction is intended to normalize around the origin to determine plane crossed
+        plane_normal = detect_plane_crossed(
+            principle-jt_center, prev_point-jt_center)
+        inter_point_1 = get_intersection_w_plane(
+            plane_normal, inter_vector1, jt_center)
+        # add to FRONT of zone/octant z array
+
+        sorted_ord_mj_path[z].insert(0, inter_point_1)
+        # get second interpolated point >> this will be handled as the function iterates
+
+        sorted_ord_mj_path[prev_key].append(inter_point_1)
+        # add pivots (checking for next zone existence as needed), for both current z zone and prev_key zone; add to END so that the FIRST is still valid
+        zone_pivots = pivots[z]
+        for piv in zone_pivots:
+            # check for len == 0 for next key in dict, IF TRUE only needs sec, else, needs both
+            sorted_ord_mj_path[z].append(np.array(piv)*avg_radius + jt_center)
+        # update prev_key value
+
 
 def scale_points_to_surface(point_path, avg_radius):
-    """point_path is a np.array of 3d points *normalized* around origin!"""
+    """point_path is a np.array of 3d points *normalized* around origin, 
+    tho not spherical; returns points scaled to the surface of a sphere"""
     current_magnitudes = np.linalg.norm(point_path, axis=1)
     scaling_factors = avg_radius / current_magnitudes
     scaled_points = (point_path *
@@ -143,7 +265,8 @@ def scale_points_to_surface(point_path, avg_radius):
     return scaled_points
 
 
-def plot_sphere(ax, rad_avg):
+def plot_sphere(ax, rad_avg, jt_center):
+    """plots a wire-mesh sphere on the axis of size given by rad_avg"""
     phi = np.linspace(0, np.pi, 20)
     theta = np.linspace(0, 2 * np.pi, 40)
     x = rad_avg * np.outer(np.sin(theta), np.cos(phi)) + jt_center[0]
@@ -173,6 +296,29 @@ def plot_sphere(ax, rad_avg):
     ax.plot_surface(p1x, p1y, p1z, alpha=0.2, color='blue')
     ax.plot_surface(p2x, p2y, p2z, alpha=0.2, color='red')
     ax.plot_surface(p3x, p3y, p3z, alpha=0.2, color='green')
+
+
+def add_nose_and_other_gh(ax):
+    """plots a nose (joint 0) and opposing shoulder (joint 11) on the given axis;"""
+    nose_coord = []
+    for frame in sample1:
+        nose = frame[0]
+        hx, hy, hz = nose[1:]
+        nose_coord.append([hx, hy, hz])
+    nose_coord = np.array(nose_coord)
+    nose_coord_avg = find_centroid(nose_coord)
+    ax.scatter(nose_coord_avg[0], nose_coord_avg[1],
+               nose_coord_avg[2], marker='X', s=50, color='yellow')
+    # left shoulder
+    lGH_coord = []
+    for frame in sample1:
+        lGH = frame[11]
+        hx, hy, hz = lGH[1:]
+        lGH_coord.append([hx, hy, hz])
+    lGH_coord = np.array(lGH_coord)
+    lGH_coord_avg = find_centroid(lGH_coord)
+    ax.scatter(lGH_coord_avg[0], lGH_coord_avg[1],
+               lGH_coord_avg[2], marker='X', s=50, color='orange')
 
 
 def plot_on_sphere(subplot_id, jt_center, mvj_path_quadrant, sphere=True):
@@ -252,25 +398,7 @@ def plot_on_sphere(subplot_id, jt_center, mvj_path_quadrant, sphere=True):
                                         0], mj_path_array[:, 1], mj_path_array[:, 2]
     ax.scatter(mjp_x, mjp_y, mjp_z, s=5, marker='.', color="black")
     # nose
-    nose_coord = []
-    for frame in sample1:
-        nose = frame[0]
-        hx, hy, hz = nose[1:]
-        nose_coord.append([hx, hy, hz])
-    nose_coord = np.array(nose_coord)
-    nose_coord_avg = find_centroid(nose_coord)
-    ax.scatter(nose_coord_avg[0], nose_coord_avg[1],
-               nose_coord_avg[2], marker='X', s=50, color='yellow')
-    # left shoulder
-    lGH_coord = []
-    for frame in sample1:
-        lGH = frame[11]
-        hx, hy, hz = lGH[1:]
-        lGH_coord.append([hx, hy, hz])
-    lGH_coord = np.array(lGH_coord)
-    lGH_coord_avg = find_centroid(lGH_coord)
-    ax.scatter(lGH_coord_avg[0], lGH_coord_avg[1],
-               lGH_coord_avg[2], marker='X', s=50, color='orange')
+    add_nose_and_other_gh(ax)
 
     plt.show()
 
@@ -353,8 +481,53 @@ def draw_all_points_on_sphere(avg_radius, jt_center, all_mvj_points):
                                              0], scaled_points_to_plot[:, 1], scaled_points_to_plot[:, 2]
     ax.scatter(sp_x, sp_y, sp_z, s=15, marker='o',
                color='orange')
-    plot_sphere(ax, avg_radius)
+    plot_sphere(ax, avg_radius, jt_center)
+    # improved_add_nose_and_other_gh(ax, all_mvj_points)
     plt.show()
+    return full_path_SA
+
+
+def plot_all_partitioned_on_sphere(mvj_path, jt_center, avg_radius):
+    plt.clf()
+    color_list = 'bgrcmykw'
+    ax = plt.axes(projection="3d", aspect="equal")
+    ax.set_xlim3d(-.75, .75)
+    ax.set_ylim3d(0, -1.5)
+    ax.set_zlim3d(-.75, .75)
+    ax.set_xlabel('X_values', fontweight='bold')
+    ax.set_ylabel('Y_values', fontweight='bold')
+    ax.set_zlabel('Z_values', fontweight='bold')
+    # start w/ all points
+    by_quadrant = partition_mj_path(jt_center, mj_path_array)
+    i = 0
+    for q, pts in by_quadrant.items():
+        normalized_pts = pts - jt_center
+        scaled_points = scale_points_to_surface(normalized_pts,
+                                                avg_radius) + jt_center
+        px, py, pz = scaled_points[:,
+                                   0], scaled_points[:, 1], scaled_points[:, 2]
+        ax.scatter(px, py, pz, s=10, marker='o', color=color_list[i])
+        i += 1
+    plot_sphere(ax, avg_radius, jt_center)
+
+    ax.scatter(jt_center[0], jt_center[1], jt_center[2],
+               s=20, marker='X', color="red")
+
+    # partion
+    # for each partion, plot onto the same sphere
+    # add nose/gh reference
+    # add joint ctr referecne
+    add_nose_and_other_gh(ax)
+
+    plt.show()
+
+
+def plot_partiton_calc_area(partition_pts, color, plot=True):
+    """this takes in a single octant of points (including 4 additional:
+    - 2 interpolated_points (one at beginning, one at end of array)
+    - 2 pivot_point (added at end, so that the first point follows the final pivot)), 
+    a specified color and optional 'plot' argument (def: True);
+    returns the surface area of that octants visited surface area"""
 
 
 # map resultant workspace-zone onto video??
@@ -390,6 +563,8 @@ if __name__ == "__main__":
     # plot_on_sphere(i, jt_center, mj_path_array)
     # ^^ this should really be done in a new function that:
     # > calculates the avg radius differently (right now it's really small ~.1)
+
+    plot_all_partitioned_on_sphere(mj_path_array, jt_center, avg_radius)
 
     # plotting all points onto the sphere, calculating SA
     draw_all_points_on_sphere(avg_radius, jt_center, mj_path_array)

@@ -1,6 +1,8 @@
 import cv2
 # video manipulation
 import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 # allows for pose estimation
 import time
 from pprint import pprint
@@ -9,6 +11,8 @@ from pprint import pprint
 
 
 class poseDetector():
+    """class that takes """
+
     def __init__(self, mode=False, modelComplexity=2, smooth_landmarks=True, detectionConfidence=0.5, trackConfidence=0.9):
         self.mode = mode
         self.modelComplexity = modelComplexity
@@ -57,6 +61,10 @@ class poseDetector():
         return meters_lmList
 
 # pprint(landmarks_to_print)
+
+
+class landmarkDetector():
+    """updated version May 1, 2023"""
 
 
 def main():
