@@ -16,7 +16,7 @@ import CARs_volume as cars
 def new_process_CARs_vid_from_file(filepath, pose_landmarker):
     real_landmarks = []
     with pose_landmarker as landmarker:
-        cap = cv2.VideoCapture(vid_path)
+        cap = cv2.VideoCapture(filepath)
         frame_rate = cap.get(cv2.CAP_PROP_FPS)
         while True:
             success, img = cap.read()  # this gives one frame at a time
@@ -37,29 +37,45 @@ def new_process_CARs_vid_from_file(filepath, pose_landmarker):
     return real_landmarks
 
 
-def new_normalize_joint_center(real_landmarks, target_joint_id, moving_joint_id):
+def new_normalize_joint_center(real_landmarks, target_joint_id, moving_joint_id, thin_points=False):
     tj_path = []
     mj_path = []
-    for lm_list in real_landmarks:
+    for i, lm_list in enumerate(real_landmarks):
+        if thin_points:
+            if i % 3 == 0:
+                continue
         targ = lm_list[0]
         # tj == a Landmark object
         tj = targ[target_joint_id]
         mj = targ[moving_joint_id]
-        # TODO filter out low-visibility or low-presence scores?
-        if mj.presence < .9 or mj.visibility < .9:
-            # filtering out some lower values...
-            continue
-        tj_coords = [tj.x, tj.y, tj.z]
-        mj_coords = [mj.x, mj.y, mj.z]
+        tolerance_val = .8  # for weeding out low-visibility or low-presence scores
+        if type(mj) == dict:
+            # handling deserialized json obj, rather than og Landmark objects
+            if mj["presence"] < tolerance_val or mj["visibility"] < tolerance_val:
+                # filtering out some lower values...
+                print(f"filtering out mj from frame {i}")
+                pprint(mj)
+                continue
+            tj_coords = [tj["x"], tj["y"], tj["z"]]
+            mj_coords = [mj["x"], mj["y"], mj["z"]]
+        else:
+            # handling Landmark objects
+            if mj.presence < tolerance_val or mj.visibility < tolerance_val:
+                # filtering out some lower values...
+                continue
+            tj_coords = [tj.x, tj.y, tj.z]
+            mj_coords = [mj.x, mj.y, mj.z]
         tj_path.append(tj_coords)
         mj_path.append(mj_coords)
     # convert to np.array for quick vector handling
     tj_array = np.array(tj_path)
     mj_array = np.array(mj_path)
-    idealized_joint_center = tj_array[0]
+    prev_idealized_joint_center = tj_array[0]
+    idealized_joint_center = cars.find_centroid(tj_array)
     final_mj_path = np.zeros((len(mj_array), 3))
     radii = []
     for i, pt in enumerate(tj_array):
+        # TODO do a difference based on each frame, not on a single position
         diff = pt - idealized_joint_center
         altered_mj_pt = mj_array[i] + diff
         # radius = np.linalg.norm(altered_mj_pt - idealized_joint_center)
@@ -70,8 +86,9 @@ def new_normalize_joint_center(real_landmarks, target_joint_id, moving_joint_id)
     avg_radius = sum(radii) / len(mj_array)
     median_radius = sorted(radii)[len(mj_array)//2]
     longest_radius = sorted(radii)[-1]
+    # using LONGEST bc the thinking is that when the arm is longest (across the screen, it will also be most accurate)
 
-    return avg_radius, idealized_joint_center, final_mj_path
+    return longest_radius, idealized_joint_center, final_mj_path
 
 
 # -------------------
@@ -96,10 +113,15 @@ def save_run_to_json(landmark_array):
     file_string = f'/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_{date_string}.json'
     with open(file_string, 'w') as landmark_json:
         to_json = {}
-        for i, pose in enumerate(lm_array):
+        for i, pose in enumerate(landmark_array):
+            if pose == []:
+                print(f"frame {i} was empty!")
+                continue
             to_json[i] = {}
             targ_pose = to_json[i]
             for j, joint in enumerate(pose[0]):
+                # at some point the POSE is empty? i == 146
+
                 # each joint is a Landmark() object
                 targ_pose[j] = {}
                 targ_joint = targ_pose[j]
@@ -114,44 +136,78 @@ def save_run_to_json(landmark_array):
 # TODO run deserializer (back into Landmark obj) --> can I just pickle?
 
 
+def run_from_json(json_path):
+    with open(json_path, 'r') as landmark_json:
+        lmsjson = json.load(landmark_json)
+        lm_result = []
+        for k, v in lmsjson.items():
+            joint_keys = [int(i) for i in v.keys()]
+            joint_keys.sort()
+            joints = [v[str(jkey)] for jkey in joint_keys]
+            lm_result.append([joints])
+        # pprint(lm_result[:5])
+        return lm_result
+
+
 if __name__ == "__main__":
+    running_from_vid_file = False
+
     # video mp run!
-    BaseOptions = mp.tasks.BaseOptions
-    PoseLandmarker = mp.tasks.vision.PoseLandmarker
-    PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
-    VisionRunningMode = mp.tasks.vision.RunningMode
-    mp_pose_model_heavy_path = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/models/pose_landmarker_heavy.task'
+    if running_from_vid_file:
+        BaseOptions = mp.tasks.BaseOptions
+        PoseLandmarker = mp.tasks.vision.PoseLandmarker
+        PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
+        VisionRunningMode = mp.tasks.vision.RunningMode
+        mp_pose_model_heavy_path = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/models/pose_landmarker_heavy.task'
 
-    options = PoseLandmarkerOptions(
-        base_options=BaseOptions(model_asset_path=mp_pose_model_heavy_path),
-        running_mode=VisionRunningMode.VIDEO
-        # OTHER config options:
-        # num_poses
-        # min_pose_detection_confidence
-        # min_pose_presence_confidence
-        # min_tracking_confidence
-        # output_segmentation_masks
-        # result_callback --> livestream mode only
-    )
+        options = PoseLandmarkerOptions(
+            base_options=BaseOptions(
+                model_asset_path=mp_pose_model_heavy_path),
+            running_mode=VisionRunningMode.VIDEO
+            # OTHER config options:
+            # num_poses
+            # min_pose_detection_confidence
+            # min_pose_presence_confidence
+            # min_tracking_confidence
+            # output_segmentation_masks
+            # result_callback --> livestream mode only
+        )
 
-    # get vid filepath
-    vid_path = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_gh_bare_output.mp4"
-    # construct landmarker to use (w/ correct options --> see above)
-    pose_landmarker = PoseLandmarker.create_from_options(options)
-    # build lm_array w/ cv2 > mediapipe.landmarker
-    tStart = time.time()
-    lm_array = new_process_CARs_vid_from_file(vid_path, pose_landmarker)
-    tEnd = time.time()
-    landmarking_time = tEnd - tStart
-    # each run, save to it's own json for easy unpacking/viewing
-    # save_run_to_json(lm_array)
+        # get vid filepath
+        vid_path = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_gh_bare_output.mp4"
+        vid_path_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_GH_small_output.mp4"
+        vid_path_side = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_GH_side_output.mp4"
+        # construct landmarker to use (w/ correct options --> see above)
+        pose_landmarker = PoseLandmarker.create_from_options(options)
+        # build lm_array w/ cv2 > mediapipe.landmarker
+        tStart = time.time()
+        lm_array = new_process_CARs_vid_from_file(
+            vid_path_side, pose_landmarker)
+
+        tEnd = time.time()
+        landmarking_time = tEnd - tStart
+        print("That took... ", landmarking_time)
+        # each run, save to it's own json for easy unpacking/viewing
+        save_run_to_json(lm_array)
+        exit()
+    else:
+        json_file_path = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_26_09_2023__11:33:05.json'
+        json_file_path_small = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_27_09_2023__small_R_GH.json'
+        json_file_path_side = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_27_09_2023__side_R_GH.json'
+        lm_array = run_from_json(json_file_path_side)
+        # lm_array = run_from_json(json_file_path_side)
 
     # normalize points around target joint
     # TODO determine WHICH joint is moving most to determine which CAR, side, etc it is
-    # TODO update normalize_joint_center to work with NEW version of landmark array
+
+    # R gh == 12, R elbow = 14
     avg_radius, jt_center, mj_path_array = new_normalize_joint_center(
-        lm_array, 12, 14)
-    # TODO rewrite the plotting functions to handle the new shapes available (no gloabl refs!)
-    surface_area = cars.draw_all_points_on_sphere(
-        avg_radius, jt_center, mj_path_array)
-    print(surface_area, landmarking_time)
+        lm_array, 12, 14, thin_points=False)
+
+    # L gh == 11, L elbow = 13
+    # avg_radius, jt_center, mj_path_array = new_normalize_joint_center(
+    #    lm_array, 11, 13, thin_points=False)
+
+    cars.draw_all_points_on_sphere(
+        avg_radius, jt_center, mj_path_array, lm_array, scale_to_sphere=True)
+    # print(landmarking_time)

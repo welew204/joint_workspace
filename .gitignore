@@ -10,6 +10,7 @@ __pycache__/
 *.png
 pose_est_tutorial/posEstVids/
 CARs_app/sample_CARs/
+CARs_app/models
 
 # Distribution / packaging
 .Python

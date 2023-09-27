@@ -274,7 +274,7 @@ def plot_sphere(ax, rad_avg, jt_center):
     z = rad_avg * np.outer(np.cos(theta),
                            np.ones_like(phi)) + jt_center[2]
 
-    ax.plot_wireframe(x, y, z, color='k', linewidth=0.3,
+    ax.plot_wireframe(x, y, z, color='k', linewidth=0.1,
                       rstride=1, cstride=1)
 
     # adding some axial planes to see better
@@ -319,6 +319,29 @@ def add_nose_and_other_gh(ax):
     lGH_coord_avg = find_centroid(lGH_coord)
     ax.scatter(lGH_coord_avg[0], lGH_coord_avg[1],
                lGH_coord_avg[2], marker='X', s=50, color='orange')
+
+
+def improved_add_nose_and_other_gh(ax, all_lms):
+    """plots a nose (joint 0) and opposing shoulder (joint 11) on the given axis;"""
+    nose_coord = []
+    for frame in all_lms:
+        nose = frame[0][0]
+        hx, hy, hz = nose["x"], nose["y"], nose["z"]
+        nose_coord.append([hx, hy, hz])
+    nose_coord = np.array(nose_coord)
+    nose_coord_avg = find_centroid(nose_coord)
+    ax.scatter(nose_coord_avg[0], nose_coord_avg[1],
+               nose_coord_avg[2], marker='X', s=50, color='yellow')
+    # left shoulder
+    lGH_coord = []
+    for frame in all_lms:
+        lGH = frame[0][11]
+        hx, hy, hz = lGH["x"], lGH["y"], lGH["z"]
+        lGH_coord.append([hx, hy, hz])
+    lGH_coord = np.array(lGH_coord)
+    lGH_coord_avg = find_centroid(lGH_coord)
+    ax.scatter(lGH_coord_avg[0], lGH_coord_avg[1],
+               lGH_coord_avg[2], marker='X', s=50, color='green')
 
 
 def plot_on_sphere(subplot_id, jt_center, mvj_path_quadrant, sphere=True):
@@ -449,7 +472,7 @@ def convert_cartesian_to_latlon_rad(coords_cart, radius_of_sphere):
     return lat, lon
 
 
-def draw_all_points_on_sphere(avg_radius, jt_center, all_mvj_points):
+def draw_all_points_on_sphere(avg_radius, jt_center, all_mvj_points, lms_array, scale_to_sphere=False):
     # original path points of TOTAL joint path motion
     ax = plt.axes(projection="3d", aspect="equal")
     ax.set_xlim3d(-.75, .75)
@@ -461,30 +484,36 @@ def draw_all_points_on_sphere(avg_radius, jt_center, all_mvj_points):
 
     mjp_x, mjp_y, mjp_z = all_mvj_points[:,
                                          0], all_mvj_points[:, 1], all_mvj_points[:, 2]
-    # ax.scatter(mjp_x, mjp_y, mjp_z, s=2, marker='.', color="black")
     ax.scatter(jt_center[0], jt_center[1], jt_center[2],
                s=20, marker='X', color="red")
-    normalized_all_pts = all_mvj_points - jt_center
-    # these scaled_points are oriented around Origin (0,0,0)
-    scaled_points = scale_points_to_surface(normalized_all_pts,
-                                            avg_radius)
-    # converting points to lat-lon
-    all_pts_as_lat_lon = [convert_cartesian_to_latlon_rad(
-        pt, avg_radius) for pt in scaled_points]
-    full_path_SA = calc_spherical_surface_area(all_pts_as_lat_lon, avg_radius)
-    print("Surface area of visited region: ", abs(full_path_SA))
+    if scale_to_sphere:
+        normalized_all_pts = all_mvj_points - jt_center
+        # these scaled_points are oriented around Origin (0,0,0)
+        scaled_points = scale_points_to_surface(normalized_all_pts,
+                                                avg_radius)
+        # converting points to lat-lon
+        all_pts_as_lat_lon = [convert_cartesian_to_latlon_rad(
+            pt, avg_radius) for pt in scaled_points]
+        full_path_SA = calc_spherical_surface_area(
+            all_pts_as_lat_lon, avg_radius)
+        joint_sphere_area = 4*math.pi*(avg_radius**2)
+        print("Surface area of visited region: ", abs(full_path_SA))
+        print("Surface area of joint sphere: ", joint_sphere_area)
+        print("Proportion of visited area: ",
+              abs(full_path_SA)/joint_sphere_area)
 
-    # moving scale dpoints back to be around jt_center...
-    scaled_points_to_plot = scaled_points + jt_center
-    # plotting them
-    sp_x, sp_y, sp_z = scaled_points_to_plot[:,
-                                             0], scaled_points_to_plot[:, 1], scaled_points_to_plot[:, 2]
-    ax.scatter(sp_x, sp_y, sp_z, s=15, marker='o',
-               color='orange')
+        # moving scale dpoints back to be around jt_center...
+        scaled_points_to_plot = scaled_points + jt_center
+        # plotting them
+        sp_x, sp_y, sp_z = scaled_points_to_plot[:,
+                                                 0], scaled_points_to_plot[:, 1], scaled_points_to_plot[:, 2]
+        ax.scatter(sp_x, sp_y, sp_z, s=15, marker='o',
+                   color='blue')
+    else:
+        ax.scatter(mjp_x, mjp_y, mjp_z, s=2, marker='.', color="black")
     plot_sphere(ax, avg_radius, jt_center)
-    # improved_add_nose_and_other_gh(ax, all_mvj_points)
+    improved_add_nose_and_other_gh(ax, all_lms=lms_array)
     plt.show()
-    return full_path_SA
 
 
 def plot_all_partitioned_on_sphere(mvj_path, jt_center, avg_radius):
@@ -532,7 +561,8 @@ def plot_partiton_calc_area(partition_pts, color, plot=True):
 
 # map resultant workspace-zone onto video??
 if __name__ == "__main__":
-    # new_CARs_vid(1, 'R_GH_partial_improved_tracking')
+    new_CARs_vid(1, 'R_GH_side')
+    exit()
     vid_path = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_gh_bare_output.mp4"
     # real_lm_list = process_CARs_vid(vid_path)
 
