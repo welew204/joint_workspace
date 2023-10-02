@@ -561,8 +561,8 @@ def plot_partiton_calc_area(partition_pts, color, plot=True):
 
 # map resultant workspace-zone onto video??
 if __name__ == "__main__":
-    new_CARs_vid(1, 'R_GH_side')
-    exit()
+    # new_CARs_vid(1, 'R_GH_side')
+    # exit()
     vid_path = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_gh_bare_output.mp4"
     # real_lm_list = process_CARs_vid(vid_path)
 

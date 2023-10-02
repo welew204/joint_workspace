@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from CARs_volume import scale_points_to_surface
 
 # used to find orthogonal vectors
 arbitrary_vector = np.array([1, 0, 0])
@@ -66,14 +67,16 @@ def gen_square_in_3d(lat_lon_delta, normal, radius_of_sphere):
     # it should return a series of (x,y,z) points that are on the sphere
 
     # determine lat/long (degrees) of point on surface of normal vect
-    magnitude = np.linalg.norm(normal)  # Calculate the magnitude
-    normalized_vector = normal / magnitude  # Normalize the vector
-    ax.scatter(normalized_vector[0],
-               normalized_vector[1], normalized_vector[2])
+
+    # don't think I need to normalize the normal anymore (scaling it onto surface :)
+    # magnitude = np.linalg.norm(normal)  # Calculate the magnitude
+    # normalized_vector = normal / magnitude  # Normalize the vector
+    ax.scatter(normal[0],
+               normal[1], normal[2])
 
     # now trying this formula: https://rbrundritt.wordpress.com/2008/10/14/conversion-between-spherical-and-cartesian-coordinates-systems/
     latitude_of_normal_rad, longitude_of_normal_rad = convert_cartesian_to_latlon_rad(
-        normalized_vector, radius_of_sphere)
+        normal, radius_of_sphere)
 
     normal_point = convert_latlon_to_cartesian(
         [latitude_of_normal_rad, longitude_of_normal_rad], radius_of_sphere)
@@ -133,23 +136,48 @@ def calc_spherical_surface_area(coords, radius):
     return area_of_spherical_polygon
 
 
+def scale_normal_to_surface(normal, radius):
+    """normal is a np.array formatt'd vector; returns vector scaled to the surface of a sphere"""
+    current_magnitude = np.linalg.norm(normal)
+    scaling_factor = radius / current_magnitude
+    scaled_vect = (normal *
+                   scaling_factor)
+    return scaled_vect
+
+
 if __name__ == "__main__":
     fig = plt.figure()
-    ax = Axes3D(fig, box_aspect=[1, 1, 1])
+    ax = plt.axes(projection="3d", aspect="equal")
+    ax.set_xlim3d(-5, 5)
+    ax.set_ylim3d(-5, 5)
+    ax.set_zlim3d(-5, 5)
+    ax.set_xlabel('X_values', fontweight='bold')
+    ax.set_ylabel('Y_values', fontweight='bold')
+    ax.set_zlabel('Z_values', fontweight='bold')
+    # ax = Axes3D(fig, box_aspect=[1, 1, 1])
     ax.scatter(0, 0, 0, s=50, color='#377d52')
-    radius_of_sphere = 1
-    normal = np.array([1, 1, 1])
+    radius_of_sphere = 4
+    normal = np.array([1, 0, .1])
     gen_sphere(radius_of_sphere)
+    normal = scale_normal_to_surface(normal, radius_of_sphere)
     normal_pt, tangent_square_pts = gen_square_in_3d(
-        [np.pi/10, np.pi/5], normal, radius_of_sphere)
+        [np.pi/20, np.pi/20], normal, radius_of_sphere)
     ax.scatter(normal_pt[0], normal_pt[1], normal_pt[2],
                marker='X', s=25, color="red")
     ax.scatter(
         tangent_square_pts[:, 0], tangent_square_pts[:, 1], tangent_square_pts[:, 2], s=10)
     square_points_lat_lon = [convert_cartesian_to_latlon_rad(
         pt, radius_of_sphere) for pt in tangent_square_pts]
+    # ALSO calc square PLANAR surface area, using gen'd points (top - left * right - bottom)
+    planar_square_area = abs(np.linalg.norm(
+        tangent_square_pts[0] - tangent_square_pts[1])) * abs(np.linalg.norm(tangent_square_pts[3] - tangent_square_pts[2]))
+
     # !!! order of points matter! they must be in a 'ring'; Clockwise will be positive, CC will be
     area_of_spherical_polygon = calc_spherical_surface_area(
         square_points_lat_lon, radius_of_sphere)
-    print(area_of_spherical_polygon)
+    total_spherical_area = 4*np.pi*(radius_of_sphere**2)
+    print(
+        f"Spherical polygon area == {area_of_spherical_polygon}\n Planar polygon area == {planar_square_area}")
+    print(
+        f"Total Sphere area == {total_spherical_area}\n Ratio of spherical polygon SA to total sphere == {area_of_spherical_polygon/total_spherical_area}")
     plt.show()
