@@ -1,4 +1,5 @@
 import numpy as np
+import json
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from CARs_volume import scale_points_to_surface
@@ -98,10 +99,34 @@ def gen_square_in_3d(lat_lon_delta, normal, radius_of_sphere):
     return normal_point, np.array([top_of_diamond_cart, l_of_diamond_cart, bottom_of_diamond_cart, r_of_diamond_cart])
 
 
-def gen_circle_in_3d(num_of_points, radius, normal):
+def gen_circle_in_3d(num_of_points, radius, normal, pt_on_sphere, sphere_radius):
     # this should generate a planar circle @ given normal w/ given edge length
-    # it should return a series of (x,y,z) points
-    pass
+    normd_normal = normal / np.linalg.norm(normal)
+
+    if not np.isclose(normal[2], 0):
+        # ie if y is close to 0...
+        u = np.cross(normd_normal, [0, 0, 1])
+    else:
+        # ie if y is NOT close to 0...
+        u = np.cross(normd_normal, [0, 1, 0])
+
+    # u is orthogonal to normal
+    u = u / np.linalg.norm(u)  # Normalize u
+    v = np.cross(normd_normal, u)
+    # general equation for circular points on a plane:
+    # P=center+radius×(cos(θ)×u+sin(θ)×v)
+    thetas = np.linspace(0, 2*np.pi, num_of_points, endpoint=False)
+    points = [pt_on_sphere+radius *
+              ((np.cos(th)*u)+(np.sin(th)*v)) for th in thetas]
+    points = np.array(points)
+    # it should return a series of (x,y,z) points ON the plane
+    sp_points = scale_points_to_surface(points, sphere_radius)
+
+    ax.scatter(points[:, 0], points[:, 1], points[:, 2],
+               color='b')  # Plot the points
+    ax.scatter(sp_points[:, 0], sp_points[:, 1], sp_points[:, 2],
+               color='g')  # Plot the sp_points
+    return points, sp_points
 
 
 def gen_triangle_in_3d(num_of_points, edge, normal):
@@ -117,6 +142,10 @@ def calc_planar_surface_area(coords):
     pass
 
 
+def toRadians(angleInDegrees):
+    return (angleInDegrees*np.pi) / 180
+
+
 def calc_spherical_surface_area(coords, radius):
     # given coords in (lat, long) in radians
     # # !!! order of points matter! they must be in a 'ring'; Clockwise will be positive, CC will be
@@ -129,10 +158,11 @@ def calc_spherical_surface_area(coords, radius):
     for i in range(num_of_pts):
         x2 = coords[i][0]
         y2 = coords[i][1]
-        area += (x2 - x1) * (2 + np.sin(y1) + np.sin(y2))
+        area += toRadians(x2 - x1) * \
+            (2 + np.sin(toRadians(y1)) + np.sin(toRadians(y2)))
         x1 = x2
         y1 = y2
-    area_of_spherical_polygon = (area * radius**2) / 2
+    area_of_spherical_polygon = (area * radius * radius) / 2
     return area_of_spherical_polygon
 
 
@@ -145,21 +175,84 @@ def scale_normal_to_surface(normal, radius):
     return scaled_vect
 
 
+def polygon_area_3d(vertices, plane_normal):
+    """Application of the Gauss Shoelace formula"""
+    n = len(vertices)
+    if n < 3:
+        return 0  # A polygon needs at least 3 vertices
+
+    # Compute area using 3D Shoelace formula
+    area_vector = 0.5 * sum(np.cross(vertices[i], vertices[(i + 1) % n])
+                            for i in range(n))
+
+    # Project area_vector onto the normal to get the magnitude
+    area = np.dot(area_vector, plane_normal) / np.linalg.norm(plane_normal)
+
+    return abs(area)
+
+
+def model_state_surface_area(geojson_filepath, radius_of_earth):
+    with open(geojson_filepath) as gjson:
+        boundaries = json.load(gjson)
+    boundaries = boundaries["features"]
+    total_area = 0
+    for dist in boundaries:
+        geo = dist["geometry"]
+        if geo["type"] == 'Polygon':
+            coords = geo["coordinates"][0]
+            # swapping lon, lat for correct usage in algo
+            upd_coords = [[y, x] for [x, y] in coords]
+            dist_area = calc_spherical_surface_area(
+                upd_coords, radius_of_earth)
+        elif geo["type"] == 'MultiPolygon':
+            mp_area = 0
+            for poly in geo["coordinates"]:
+                coords = poly[0]
+                # swapping lon, lat for correct usage in algo
+                upd_coords = [[y, x] for [x, y] in coords]
+                poly_area = calc_spherical_surface_area(
+                    upd_coords, radius_of_earth)
+                mp_area += poly_area
+            dist_area = mp_area
+        total_area += abs(dist_area)
+    return total_area / 1000  # to take me back to km
+
+
 if __name__ == "__main__":
+    # radius using 6,371km ==> 6371000m
+    alaska_area = model_state_surface_area(
+        '/Users/williamhbelew/Hacking/ocv_playground/House_District_Boundaries.geojson', 6371000)
+    print(
+        f"Area of alaska? {alaska_area}sq km\n --> compare to 1,723,337 sq km (reference)")
+    radius_of_sphere = 4
+    axis_size = radius_of_sphere*1.3
     fig = plt.figure()
     ax = plt.axes(projection="3d", aspect="equal")
-    ax.set_xlim3d(-5, 5)
-    ax.set_ylim3d(-5, 5)
-    ax.set_zlim3d(-5, 5)
+    ax.set_xlim3d(-(axis_size), axis_size)
+    ax.set_ylim3d(-(axis_size), (axis_size))
+    ax.set_zlim3d(-(axis_size), (axis_size))
     ax.set_xlabel('X_values', fontweight='bold')
     ax.set_ylabel('Y_values', fontweight='bold')
     ax.set_zlabel('Z_values', fontweight='bold')
     # ax = Axes3D(fig, box_aspect=[1, 1, 1])
     ax.scatter(0, 0, 0, s=50, color='#377d52')
-    radius_of_sphere = 4
     normal = np.array([1, 0, .1])
     gen_sphere(radius_of_sphere)
     normal = scale_normal_to_surface(normal, radius_of_sphere)
+    ax.quiver(0, 0, 0, normal[0], normal[1], normal[2], color='orange')
+
+    # CIRCLE validation (the spherical area is SMALLER bc the points are scaled down (TOWARd the origin))
+    pl_circle_pts, sp_circle_pts = gen_circle_in_3d(
+        10, 1, normal, normal, radius_of_sphere)
+
+    planar_circular_sa = polygon_area_3d(sp_circle_pts, normal)
+    sp_circle_pts_to_lat_lon = [convert_cartesian_to_latlon_rad(
+        pt, radius_of_sphere) for pt in sp_circle_pts]
+    sp_circle_area = calc_spherical_surface_area(
+        sp_circle_pts_to_lat_lon, radius_of_sphere)
+    print(
+        f"The planar SA = {planar_circular_sa}\nThe spherical SA = {abs(sp_circle_area)}")
+
     normal_pt, tangent_square_pts = gen_square_in_3d(
         [np.pi/20, np.pi/20], normal, radius_of_sphere)
     ax.scatter(normal_pt[0], normal_pt[1], normal_pt[2],

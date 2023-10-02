@@ -437,8 +437,12 @@ def find_centroid(quadrant_mvj_path):
     return centroid
 
 
+def toRadians(angleInDegrees):
+    return (angleInDegrees*np.pi) / 180
+
+
 def calc_spherical_surface_area(coords, radius):
-    # given coords in (lat, long) in radians
+    # given coords in (lat, long)
     # # !!! order of points matter! they must be in a 'ring'; Clockwise will be positive,
     # CC will be negative
     #  and radius of sphere that shape is on surface of
@@ -450,7 +454,8 @@ def calc_spherical_surface_area(coords, radius):
     for i in range(num_of_pts):
         x2 = coords[i][0]
         y2 = coords[i][1]
-        area += (x2 - x1) * (2 + np.sin(y1) + np.sin(y2))
+        area += toRadians(x2 - x1) * \
+            (2 + np.sin(toRadians(y1)) + np.sin(toRadians(y2)))
         x1 = x2
         y1 = y2
     area_of_spherical_polygon = (area * radius**2) / 2
