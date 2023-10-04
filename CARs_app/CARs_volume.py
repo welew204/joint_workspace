@@ -344,6 +344,22 @@ def improved_add_nose_and_other_gh(ax, all_lms):
                lGH_coord_avg[2], marker='X', s=50, color='green')
 
 
+def improved_add_pelvis_and_other_hip(ax, all_lms):
+    """plots a pelvis (at real-origin) and opposing hip (joint 23) on the given axis;"""
+    # pelvis (origin)
+    ax.scatter(0, 0, 0, marker='X', s=50, color='yellow')
+    # left hip
+    l_hip_coord = []
+    for frame in all_lms:
+        l_hip = frame[0][23]
+        hx, hy, hz = l_hip["x"], l_hip["y"], l_hip["z"]
+        l_hip_coord.append([hx, hy, hz])
+    l_hip_coord = np.array(l_hip_coord)
+    l_hip_coord_avg = find_centroid(l_hip_coord)
+    ax.scatter(l_hip_coord_avg[0], l_hip_coord_avg[1],
+               l_hip_coord_avg[2], marker='X', s=50, color='green')
+
+
 def plot_on_sphere(subplot_id, jt_center, mvj_path_quadrant, sphere=True):
     color_list = 'bgrcmykw'
     ax = plt.axes(projection="3d", aspect="equal")
@@ -442,7 +458,7 @@ def toRadians(angleInDegrees):
 
 
 def calc_spherical_surface_area(coords, radius):
-    # given coords in (lat, long)
+    # given coords in (lat, long) THAT ARE ALREADY IN RADIANS (from convert_cartesian_to_latlon_rad)
     # # !!! order of points matter! they must be in a 'ring'; Clockwise will be positive,
     # CC will be negative
     #  and radius of sphere that shape is on surface of
@@ -454,8 +470,8 @@ def calc_spherical_surface_area(coords, radius):
     for i in range(num_of_pts):
         x2 = coords[i][0]
         y2 = coords[i][1]
-        area += toRadians(x2 - x1) * \
-            (2 + np.sin(toRadians(y1)) + np.sin(toRadians(y2)))
+        area += (x2 - x1) * \
+            (2 + np.sin(y1) + np.sin(y2))
         x1 = x2
         y1 = y2
     area_of_spherical_polygon = (area * radius**2) / 2
@@ -472,6 +488,7 @@ def convert_latlon_to_cartesian(latlon_rad, radius_of_sphere):
 
 
 def convert_cartesian_to_latlon_rad(coords_cart, radius_of_sphere):
+    # from this article: https://rbrundritt.wordpress.com/2008/10/14/conversion-between-spherical-and-cartesian-coordinates-systems/
     lat = np.arcsin(coords_cart[2] / radius_of_sphere)
     lon = np.arctan2(coords_cart[1], coords_cart[0])
     return lat, lon
@@ -517,7 +534,10 @@ def draw_all_points_on_sphere(avg_radius, jt_center, all_mvj_points, lms_array, 
     else:
         ax.scatter(mjp_x, mjp_y, mjp_z, s=2, marker='.', color="black")
     plot_sphere(ax, avg_radius, jt_center)
-    improved_add_nose_and_other_gh(ax, all_lms=lms_array)
+    # turn ON to show GH
+    # improved_add_nose_and_other_gh(ax, all_lms=lms_array)
+    # turn ON to show hip
+    improved_add_pelvis_and_other_hip(ax, all_lms=lms_array)
     plt.show()
 
 
@@ -566,8 +586,11 @@ def plot_partiton_calc_area(partition_pts, color, plot=True):
 
 # map resultant workspace-zone onto video??
 if __name__ == "__main__":
-    # new_CARs_vid(1, 'R_GH_side')
-    # exit()
+    capture_CAR_from_camera = True
+    new_vid_filename = 'R_hip_quadruped_small'
+    if capture_CAR_from_camera:
+        new_CARs_vid(1, new_vid_filename)
+        exit()
     vid_path = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_gh_bare_output.mp4"
     # real_lm_list = process_CARs_vid(vid_path)
 

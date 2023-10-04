@@ -158,8 +158,11 @@ def calc_spherical_surface_area(coords, radius):
     for i in range(num_of_pts):
         x2 = coords[i][0]
         y2 = coords[i][1]
-        area += toRadians(x2 - x1) * \
-            (2 + np.sin(toRadians(y1)) + np.sin(toRadians(y2)))
+        area += (x2 - x1) * \
+            (2 + np.sin(y1) + np.sin(y2))
+        # area += (x2 - x1) * \
+        #    (2 + np.sin(y1) + np.sin(y2))
+        print(area)
         x1 = x2
         y1 = y2
     area_of_spherical_polygon = (area * radius * radius) / 2
@@ -220,10 +223,10 @@ def model_state_surface_area(geojson_filepath, radius_of_earth):
 
 if __name__ == "__main__":
     # radius using 6,371km ==> 6371000m
-    alaska_area = model_state_surface_area(
-        '/Users/williamhbelew/Hacking/ocv_playground/House_District_Boundaries.geojson', 6371000)
-    print(
-        f"Area of alaska? {alaska_area}sq km\n --> compare to 1,723,337 sq km (reference)")
+    # alaska_area = model_state_surface_area(
+    #    '/Users/williamhbelew/Hacking/ocv_playground/House_District_Boundaries.geojson', 6371000)
+    # print(
+    #    f"Area of alaska? {alaska_area}sq km\n --> compare to 1,723,337 sq km (reference)")
     radius_of_sphere = 4
     axis_size = radius_of_sphere*1.3
     fig = plt.figure()
@@ -243,7 +246,7 @@ if __name__ == "__main__":
 
     # CIRCLE validation (the spherical area is SMALLER bc the points are scaled down (TOWARd the origin))
     pl_circle_pts, sp_circle_pts = gen_circle_in_3d(
-        10, 1, normal, normal, radius_of_sphere)
+        10, 4, normal, normal, radius_of_sphere)
 
     planar_circular_sa = polygon_area_3d(sp_circle_pts, normal)
     sp_circle_pts_to_lat_lon = [convert_cartesian_to_latlon_rad(
