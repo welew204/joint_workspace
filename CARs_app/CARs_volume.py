@@ -497,9 +497,9 @@ def convert_cartesian_to_latlon_rad(coords_cart, radius_of_sphere):
 def draw_all_points_on_sphere(avg_radius, jt_center, all_mvj_points, lms_array, scale_to_sphere=False):
     # original path points of TOTAL joint path motion
     ax = plt.axes(projection="3d", aspect="equal")
-    ax.set_xlim3d(-.75, .75)
-    ax.set_ylim3d(0, -1.5)
-    ax.set_zlim3d(-.75, .75)
+    ax.set_xlim3d(-1, 1)
+    ax.set_ylim3d(0, -2)
+    ax.set_zlim3d(-1, 1)
     ax.set_xlabel('X_values', fontweight='bold')
     ax.set_ylabel('Y_values', fontweight='bold')
     ax.set_zlabel('Z_values', fontweight='bold')
@@ -535,9 +535,9 @@ def draw_all_points_on_sphere(avg_radius, jt_center, all_mvj_points, lms_array, 
         ax.scatter(mjp_x, mjp_y, mjp_z, s=2, marker='.', color="black")
     plot_sphere(ax, avg_radius, jt_center)
     # turn ON to show GH
-    # improved_add_nose_and_other_gh(ax, all_lms=lms_array)
+    improved_add_nose_and_other_gh(ax, all_lms=lms_array)
     # turn ON to show hip
-    improved_add_pelvis_and_other_hip(ax, all_lms=lms_array)
+    # improved_add_pelvis_and_other_hip(ax, all_lms=lms_array)
     plt.show()
 
 

@@ -37,6 +37,31 @@ def new_process_CARs_vid_from_file(filepath, pose_landmarker):
     return real_landmarks
 
 
+def smooth_landmarks(surfaced_mj_path, window_size=5):
+    # print(surfaced_mj_path)
+    output_array = []
+    l = 0 - (window_size // 2)
+    r = l + window_size
+    end_r = r
+    while l < len(surfaced_mj_path - (window_size // 2)):
+        if l < 0:
+            neg_window = surfaced_mj_path[l:]
+            pos_window = surfaced_mj_path[:r]
+            window = np.concatenate((neg_window, pos_window))
+        else:
+            window = surfaced_mj_path[l:r]
+        avg_vect = cars.find_centroid(window)
+        output_array.append(avg_vect)
+
+        if r == len(surfaced_mj_path):
+            r = -1
+        elif r > len(surfaced_mj_path) + end_r:
+            break
+        r += 1
+        l += 1
+    return np.array(output_array)
+
+
 def new_normalize_joint_center(real_landmarks, target_joint_id, moving_joint_id, tight_tolerance=False, thin_points=False):
     tj_path = []
     mj_path = []
@@ -152,6 +177,7 @@ def run_from_json(json_path):
 
 
 if __name__ == "__main__":
+
     running_from_vid_file = False
 
     # video mp run!
@@ -203,7 +229,8 @@ if __name__ == "__main__":
         json_file_R_hip_path_quad_side = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__side_R_hip_quad.json"
         json_file_R_hip_path_quad_side_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__side_R_hip_quad_small.json"
 
-        lm_array = run_from_json(json_file_R_hip_path_quad_side)
+        lm_array = run_from_json(json_file_R_GH_path)
+
     # normalize points around target joint
     # TODO determine WHICH joint is moving most to determine which CAR, side, etc it is
 
@@ -211,8 +238,41 @@ if __name__ == "__main__":
     # L gh == 11, L elbow = 13
     # R hip == 24, R knee = 26
     avg_radius, jt_center, mj_path_array = new_normalize_joint_center(
-        lm_array, 24, 26, tight_tolerance=False, thin_points=False)
+        lm_array, 12, 14, tight_tolerance=False, thin_points=False)
 
+    """ arr = np.array([[3, 5, 7],
+                    [2, 4, 6],
+                    [5, 7, 8],
+                    [7, 2, 3],
+                    [19, 4, -1],
+                    [12, 12, 1],
+                    [32, 45, 3]])
+    print(mj_path_array[0])
+    print(mj_path_array[-2:0])
+    print(mj_path_array[-2:])
+    arr2 = arr[0:3]
+    arr3 = arr[1:4]
+    arr4 = arr[2:5]
+    print(arr2)
+    exit() """
+
+    smoothd_lms = smooth_landmarks(mj_path_array)
+    # cars.draw_all_points_on_sphere(
+    #    avg_radius, jt_center, mj_path_array, lm_array, scale_to_sphere=True)
     cars.draw_all_points_on_sphere(
-        avg_radius, jt_center, mj_path_array, lm_array, scale_to_sphere=True)
+        avg_radius, jt_center, smoothd_lms, lm_array, scale_to_sphere=True)
+    exit()
+    """ PREP'D some json for RKB 
+    with open('/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_normalized_GH.json', 'w') as landmark_json:
+        to_json = {}
+        for i, pose in enumerate(mj_path_array):
+
+            to_json[i] = {}
+
+            to_json[i]["x"] = pose[0]
+            to_json[i]["y"] = pose[1]
+            to_json[i]["z"] = pose[2]
+
+        json.dump(to_json, landmark_json) """
+
     # print(landmarking_time)
