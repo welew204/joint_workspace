@@ -41,21 +41,28 @@ def smooth_landmarks(surfaced_mj_path, window_size=5):
     # print(surfaced_mj_path)
     output_array = []
     l = 0 - (window_size // 2)
-    r = l + (window_size - 1)
+    r = l + (window_size)
     end_r = r
-    while l < len(surfaced_mj_path - (window_size // 2)):
+    while True:
         if l < 0:
             neg_window = surfaced_mj_path[l:]
             pos_window = surfaced_mj_path[:r]
             window = np.concatenate((neg_window, pos_window))
+        elif l > len(surfaced_mj_path)-window_size:
+            # to handle when we get toward the end of the array,
+            # and the r values need to wrap back to the front of the array
+            neg_window = surfaced_mj_path[l:]
+            pos_window = surfaced_mj_path[:len(neg_window)-window_size]
+            window = np.concatenate((neg_window, pos_window))
         else:
             window = surfaced_mj_path[l:r]
         avg_vect = cars.find_centroid(window)
+        # testing for NaN values... why?!?!?!
+        if np.any(np.isnan(avg_vect)):
+            pass
         output_array.append(avg_vect)
 
-        if r == len(surfaced_mj_path):
-            r = -1
-        elif r > len(surfaced_mj_path) + end_r:
+        if r > len(surfaced_mj_path) + end_r:
             break
         r += 1
         l += 1
