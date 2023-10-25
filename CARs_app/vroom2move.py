@@ -41,7 +41,7 @@ def smooth_landmarks(surfaced_mj_path, window_size=5):
     # print(surfaced_mj_path)
     output_array = []
     l = 0 - (window_size // 2)
-    r = l + window_size
+    r = l + (window_size - 1)
     end_r = r
     while l < len(surfaced_mj_path - (window_size // 2)):
         if l < 0:
