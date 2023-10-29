@@ -4,15 +4,6 @@ import vroom2move as v2m
 import numpy as np
 from pprint import pprint
 
-# -----executed idea (below):
-
-# take in an array of normalized and scaled points (same radius)
-
-# calculate centroid of all points, ie: the central axis for all calcs
-# sort points into order of rotation from initial point
-# calc the dispalcement (aka how far the point is from the centroid)
-# partition into near/median/far points
-# calc the avg of those (furthest) points
 
 # -----previous idea
 # *conical spherical volume* == the spherical cap PLUS the cone-volume underneath it (ie a depleted ice cream cone)
@@ -36,6 +27,16 @@ def calc_reachable_area(sorted_mj_points, centroid):
     return total_reach // len(sorted_mj_points)
 # ----------
 
+# -----executed idea (below):
+
+# take in an array of normalized and scaled points (same radius)
+
+# calculate centroid of all points, ie: the central axis for all calcs
+# sort points into order of rotation from initial point
+# calc the dispalcement (aka how far the point is from the centroid)
+# partition into near/median/far points
+# calc the avg of those (furthest) points
+
 
 def sort_points_by_angle(mj_cart_pts):
     """Input smoothed array of points; 
@@ -43,70 +44,80 @@ def sort_points_by_angle(mj_cart_pts):
     centroid = cars.find_centroid(mj_cart_pts)
     origin_rotational_angle = np.empty((3,))
     output_array = []
+    riks_array = []
     for i, pt in enumerate(mj_cart_pts):
         vect_from_centroid = centroid - pt
         if i == 0:
             origin_rotational_angle = vect_from_centroid
-            continue
-        theta = angle_between(origin_rotational_angle, pt)
-        output_array.append(np.array(pt, theta))
-    return output_array.sort(key=(lambda x: x[1])), centroid
+
+        # cos = cos_between(origin_rotational_angle, vect_from_centroid)
+        # arccos = arccos_between(origin_rotational_angle, vect_from_centroid)
+        theta = angle_between(origin_rotational_angle, vect_from_centroid)
+        arctan_theta = arctan2_angle_between(
+            vect_from_centroid, origin_rotational_angle)
+        riks_array.append([i, theta, arctan_theta])
+        # TODO clean up this Python into numpy, think 'broadcasting'
+        output_array.append([pt, arctan_theta])
+    output_array.sort(key=(lambda x: x[1]))
+    return np.array(output_array), centroid
 
 
-def partition_by_displacement(sorted_mj_array, centroid, window_size):
+def partition_by_displacement(sorted_mj_array, centroid, window_size=3):
+    '''INPUT: window size is in degrees; array is in form of ((x,y,z), theta)
+    OUTPUT FORMAT of elements: [min_norm, Max_norm, n_of_points, (x,y,z)], the coord is of the max'''
+
     # init the containers for the closest, middle, and furthest 'islands' away from home base
-    nearest = []
-    median = []
-    furthest = []
+    number_of_windows = 360 // window_size
+    # [min_norm, Max_norm, n_of_points, (x,y,z)], the coord is of the max
+    buckets = [[] for _ in range(number_of_windows)]
+    output = [[0, 0, 0, (0, 0, 0)] for _ in range(number_of_windows)]
 
-    l = 0 - (window_size // 2)
-    r = l + (window_size)
-    end_r = r
-    while True:
-        if l < 0:
-            neg_window = sorted_mj_array[l:]
-            pos_window = sorted_mj_array[:r]
-            window = neg_window + pos_window
-        elif l > len(sorted_mj_array)-window_size:
-            # to handle when we get toward the end of the array,
-            # and the r values need to wrap back to the front of the array
-            neg_window = sorted_mj_array[l:]
-            pos_window = sorted_mj_array[:len(neg_window)-window_size]
-            window = np.concatenate((neg_window, pos_window))
-        else:
-            window = sorted_mj_array[l:r]
+    # partition by angle instead of by points
+    pt_idx = 0
+    for idx, pt in enumerate(sorted_mj_array):
+        theta = pt[1]
+        bucket = int(theta // window_size)
+        buckets[bucket].append(pt)
+        if bucket > 80:
+            pass
+    print()
+    for i, sample in enumerate(buckets):
+        if len(sample) == 0:
+            # case: no points in this angular range
+            continue
+        sample_by_displacement = np.array([
+            np.array(point[0], np.linalg.norm(point[0] - centroid)) for point in sample])
+        min_index = np.argmin(sample_by_displacement[:, 1])
+        max_index = np.argmax(sample_by_displacement[:, 1])
 
-        # point is a 1 x 4 array, with x,y,z and theta from origin,
-        # now adding the displacement, so now each item is 1x2,
-        # with the first element consisting of previous 1x4 array
-        window_points_by_displacement = [
-            np.array(point, np.linalg.norm(point - centroid)) for point in window]
+        # FORMAT of output elements: [min_norm, Max_norm, n_of_points, (x,y,z)], the coord is of the max
+        output[i] = [sample_by_displacement[min_index][1], sample_by_displacement[max_index][1], len(
+            sample_by_displacement), sample_by_displacement[max_index][0]]
 
-        min_index = np.argmin(window_points_by_displacement[:, 1])
-        min_element = window_points_by_displacement.pop(min_index)[0][:4]
-        nearest.append(window_points_by_displacement.pop(min_index))
-
-        max_index = np.argmax(window_points_by_displacement[:, 1])
-        max_element, max_elem_displacement = window_points_by_displacement.pop(
-            max_index)
-        max_point = max_element[:3]
-        furthest.append([max_point, max_elem_displacement])
-
-        # window_points going into median now only consists of what remains after popping min and max
-        median.extend(window_points_by_displacement)
-
-        if r > len(sorted_mj_array) + end_r:
-            break
-        r += 1
-        l += 1
-    return (np.unique(nearest), np.unique(median), np.unique(furthest))
+    return output
 
 
 def avg_displacement(pts_with_displacement):
     return np.sum(pts_with_displacement[:, 1])//len(pts_with_displacement)
 
 
-def angle_between(v1, v2):
+def cos_between(v1, v2):
+    #    Compute the dot product
+    dot_product = np.dot(v1, v2)
+
+    # Compute the norms of the vectors
+    norm_v1 = np.linalg.norm(v1)
+    norm_v2 = np.linalg.norm(v2)
+
+    # Calculate cosine theta
+    cos_theta = dot_product / (norm_v1 * norm_v2)
+
+    # Ensure the value lies between -1 and 1 to avoid numerical issues
+    cos_theta = np.clip(cos_theta, -1, 1)
+    return cos_theta
+
+
+def arccos_between(v1, v2):
     # Compute the dot product
     dot_product = np.dot(v1, v2)
 
@@ -122,6 +133,47 @@ def angle_between(v1, v2):
 
     # Calculate the angle in radians
     theta = np.arccos(cos_theta)
+
+    return theta
+
+
+# from this SO: https://stackoverflow.com/a/56401672/19589299
+# and described further here: http://johnblackburne.blogspot.com/2012/05/angle-between-two-3d-vectors.html
+def arctan2_angle_between(v1, v2):
+    arg1 = np.cross(v1, v2)
+    arg2 = np.dot(v1, v2)
+    # guidance from chatGPT
+    arg1_cross = np.linalg.norm(arg1)
+    angle = np.arctan2(arg1_cross, arg2)
+    if arg1[2] < 0:
+        # checking if CROSS product is pointing UP or DOWN (which is erased when calc the norm)
+        angle = -angle
+    if angle < 0:
+        angle += 2*np.pi
+    angle = np.degrees(angle)
+    return angle
+
+
+def angle_between(v1, v2):
+    # compute arctan2 to get angle in radians, then convert
+    # wathc out for negative angle, so in all cases add 2pi then convert to degrees
+    # Compute the dot product
+    dot_product = np.dot(v1, v2)
+
+    # Compute the norms of the vectors
+    norm_v1 = np.linalg.norm(v1)
+    norm_v2 = np.linalg.norm(v2)
+
+    # Calculate cosine theta
+    cos_theta = dot_product / (norm_v1 * norm_v2)
+
+    # Ensure the value lies between -1 and 1 to avoid numerical issues
+    cos_theta = np.clip(cos_theta, -1, 1)
+
+    # Calculate the angle in radians
+    theta = np.arccos(cos_theta)
+
+    # to handle change in (+ / -) of
 
     # Convert to degrees for a more intuitive result
     angle_deg = np.degrees(theta)
@@ -143,16 +195,17 @@ if __name__ == "__main__":
     # R hip == 24, R knee = 26
     avg_radius, jt_center, mj_path_array = v2m.new_normalize_joint_center(
         landmarks, 12, 14, tight_tolerance=False, thin_points=False)
-    pprint(mj_path_array)
 
     smoothed_mvj_points = v2m.smooth_landmarks(mj_path_array)
-    pprint(smoothed_mvj_points)
 
     sorted_smoothed_mvj_points, centroid = sort_points_by_angle(
         smoothed_mvj_points)
-    nearest, median, furthest = partition_by_displacement(
-        sorted_smoothed_mvj_points, centroid, 3)
+    cars.draw_all_points_on_sphere(
+        avg_radius, jt_center, np.array(sorted_smoothed_mvj_points[:, 1]), landmarks, scale_to_sphere=True)
 
-    print("avg displacement of closest points", avg_displacement(nearest))
-    print("avg displacement of median points", avg_displacement(median))
-    print("avg displacement of furthest points", avg_displacement(furthest))
+    output = partition_by_displacement(
+        sorted_smoothed_mvj_points, centroid)
+
+    print("avg displacement of closest points", avg_displacement(output))
+
+    # print("avg displacement of furthest points", avg_displacement(furthest))
