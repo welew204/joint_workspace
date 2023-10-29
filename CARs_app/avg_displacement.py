@@ -57,13 +57,13 @@ def sort_points_by_angle(mj_cart_pts):
             vect_from_centroid, origin_rotational_angle)
         riks_array.append([i, theta, arctan_theta])
         # TODO clean up this Python into numpy, think 'broadcasting'
-        output_array.append([pt, arctan_theta])
-    output_array.sort(key=(lambda x: x[1]))
-    return np.array(output_array), centroid
+        output_array.append([pt[0], pt[1], pt[2], arctan_theta])
+    output_array.sort(key=(lambda x: x[3]))
+    return output_array, centroid
 
 
 def partition_by_displacement(sorted_mj_array, centroid, window_size=3):
-    '''INPUT: window size is in degrees; array is in form of ((x,y,z), theta)
+    '''INPUT: window size is in degrees; array is in form of ((x,y,z,theta))
     OUTPUT FORMAT of elements: [min_norm, Max_norm, n_of_points, (x,y,z)], the coord is of the max'''
 
     # init the containers for the closest, middle, and furthest 'islands' away from home base
@@ -75,30 +75,35 @@ def partition_by_displacement(sorted_mj_array, centroid, window_size=3):
     # partition by angle instead of by points
     pt_idx = 0
     for idx, pt in enumerate(sorted_mj_array):
-        theta = pt[1]
+        theta = pt[3]
         bucket = int(theta // window_size)
-        buckets[bucket].append(pt)
-        if bucket > 80:
-            pass
+        buckets[bucket].append(np.array(pt[:3]))
     print()
     for i, sample in enumerate(buckets):
         if len(sample) == 0:
             # case: no points in this angular range
             continue
-        sample_by_displacement = np.array([
-            np.array(point[0], np.linalg.norm(point[0] - centroid)) for point in sample])
-        min_index = np.argmin(sample_by_displacement[:, 1])
-        max_index = np.argmax(sample_by_displacement[:, 1])
+        sample_by_displacement = []
+        for point in sample:
+            displacement = np.linalg.norm(point - centroid)
+            out = np.array([point[0], point[1], point[2], displacement])
+            sample_by_displacement.append(out)
+        sample_by_displacement = np.array(sample_by_displacement)
+        min_index = np.argmin(sample_by_displacement[:, 3])
+        max_index = np.argmax(sample_by_displacement[:, 3])
 
         # FORMAT of output elements: [min_norm, Max_norm, n_of_points, (x,y,z)], the coord is of the max
-        output[i] = [sample_by_displacement[min_index][1], sample_by_displacement[max_index][1], len(
-            sample_by_displacement), sample_by_displacement[max_index][0]]
+        output[i] = [sample_by_displacement[min_index][3], sample_by_displacement[max_index][3], len(
+            sample_by_displacement), sample_by_displacement[max_index][:3]]
 
     return output
 
 
-def avg_displacement(pts_with_displacement):
-    return np.sum(pts_with_displacement[:, 1])//len(pts_with_displacement)
+def avg_displacement(displacements):
+    '''IN: np.array() of displacement for each max_point'''
+    total = np.sum(displacements)
+    no_of_elements = len(displacements)
+    return total/no_of_elements
 
 
 def cos_between(v1, v2):
@@ -181,6 +186,35 @@ def angle_between(v1, v2):
     return angle_deg
 
 
+def full_flow(json_path, title_of_run, target_joint_id, moving_joint_id, draw=False):
+    """the full workflow from points (json) to avg_displacement
+    target_joint -> joint being assessed; moving_joint -> path being evaluated
+    R gh == 12, R elbow = 14
+    L gh == 11, L elbow = 13
+    R hip == 24, R knee = 26
+    """
+    landmarks = v2m.run_from_json(json_path)
+
+    avg_radius, jt_center, mj_path_array = v2m.new_normalize_joint_center(
+        landmarks, target_joint_id, moving_joint_id, tight_tolerance=False, thin_points=False)
+
+    smoothed_mvj_points = v2m.smooth_landmarks(mj_path_array)
+
+    sorted_smoothed_mvj_points, centroid = sort_points_by_angle(
+        smoothed_mvj_points)
+
+    output = partition_by_displacement(
+        sorted_smoothed_mvj_points, centroid)
+    displacements = [bucket[1] for bucket in output if bucket[1] != 0]
+
+    print(
+        f"avg displacement of closest points for {title_of_run}\n--->{avg_displacement(np.array(displacements))}")
+    if draw:
+        max_points = [np.array(bucket[3]) for bucket in output]
+        cars.draw_all_points_on_sphere(avg_radius, jt_center, np.array(
+            max_points), landmarks, scale_to_sphere=True)
+
+
 if __name__ == "__main__":
     json_file_R_GH_path = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_26_09_2023__11:33:05.json'
     json_file_R_GH_path_small_side = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_27_09_2023__small_R_GH.json'
@@ -188,24 +222,12 @@ if __name__ == "__main__":
     json_file_R_GH_path_front_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__front_R_gh_small.json"
     json_file_R_hip_path_quad_side = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__side_R_hip_quad.json"
     json_file_R_hip_path_quad_side_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__side_R_hip_quad_small.json"
-    landmarks = v2m.run_from_json(json_file_R_GH_path)
 
     # R gh == 12, R elbow = 14
     # L gh == 11, L elbow = 13
     # R hip == 24, R knee = 26
-    avg_radius, jt_center, mj_path_array = v2m.new_normalize_joint_center(
-        landmarks, 12, 14, tight_tolerance=False, thin_points=False)
-
-    smoothed_mvj_points = v2m.smooth_landmarks(mj_path_array)
-
-    sorted_smoothed_mvj_points, centroid = sort_points_by_angle(
-        smoothed_mvj_points)
-    cars.draw_all_points_on_sphere(
-        avg_radius, jt_center, np.array(sorted_smoothed_mvj_points[:, 1]), landmarks, scale_to_sphere=True)
-
-    output = partition_by_displacement(
-        sorted_smoothed_mvj_points, centroid)
-
-    print("avg displacement of closest points", avg_displacement(output))
-
-    # print("avg displacement of furthest points", avg_displacement(furthest))
+    full_flow(json_file_R_GH_path, "R GH - front", 12, 14)
+    full_flow(json_file_R_GH_path_front_small, "R GH - front, small", 12, 14)
+    full_flow(json_file_R_GH_path_side, "R GH - side", 12, 14)
+    full_flow(json_file_R_GH_path_small_side,
+              "R GH - side, small", 12, 14)
