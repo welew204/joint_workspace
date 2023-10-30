@@ -38,10 +38,9 @@ def calc_reachable_area(sorted_mj_points, centroid):
 # calc the avg of those (furthest) points
 
 
-def sort_points_by_angle(mj_cart_pts):
-    """Input smoothed array of points; 
-    Outputs sorted array of moving joint points in order of rotation from intial point"""
-    centroid = cars.find_centroid(mj_cart_pts)
+def sort_points_by_angle(mj_cart_pts, centroid):
+    """Input smoothed array of points, and centroid (of ENTIRE path); 
+    Outputs sorted array of moving joint points in order of rotation from intial point of array (so modify this if working zonally)"""
     origin_rotational_angle = np.empty((3,))
     output_array = []
     riks_array = []
@@ -59,23 +58,23 @@ def sort_points_by_angle(mj_cart_pts):
         # TODO clean up this Python into numpy, think 'broadcasting'
         output_array.append([pt[0], pt[1], pt[2], arctan_theta])
     output_array.sort(key=(lambda x: x[3]))
-    return output_array, centroid
+    return output_array
 
 
-def partition_by_displacement(sorted_mj_array, centroid, window_size=3):
+def partition_by_displacement(sorted_mj_array, centroid, angular_span=360, window_size=3):
     '''INPUT: window size is in degrees; array is in form of ((x,y,z,theta))
     OUTPUT FORMAT of elements: [min_norm, Max_norm, n_of_points, (x,y,z)], the coord is of the max'''
 
     # init the containers for the closest, middle, and furthest 'islands' away from home base
-    number_of_windows = 360 // window_size
+    number_of_windows = int(angular_span // window_size)
     # [min_norm, Max_norm, n_of_points, (x,y,z)], the coord is of the max
     buckets = [[] for _ in range(number_of_windows)]
     output = [[0, 0, 0, (0, 0, 0)] for _ in range(number_of_windows)]
 
     # partition by angle instead of by points
-    pt_idx = 0
+    starting_theta = sorted_mj_array[0][3]
     for idx, pt in enumerate(sorted_mj_array):
-        theta = pt[3]
+        theta = pt[3] - starting_theta
         bucket = int(theta // window_size)
         buckets[bucket].append(np.array(pt[:3]))
     print()
@@ -199,9 +198,10 @@ def full_flow(json_path, title_of_run, target_joint_id, moving_joint_id, draw=Fa
         landmarks, target_joint_id, moving_joint_id, tight_tolerance=False, thin_points=False)
 
     smoothed_mvj_points = v2m.smooth_landmarks(mj_path_array)
+    centroid = cars.find_centroid(smoothed_mvj_points)
 
-    sorted_smoothed_mvj_points, centroid = sort_points_by_angle(
-        smoothed_mvj_points)
+    sorted_smoothed_mvj_points = sort_points_by_angle(
+        smoothed_mvj_points, centroid)
 
     output = partition_by_displacement(
         sorted_smoothed_mvj_points, centroid)
@@ -226,8 +226,33 @@ if __name__ == "__main__":
     # R gh == 12, R elbow = 14
     # L gh == 11, L elbow = 13
     # R hip == 24, R knee = 26
-    full_flow(json_file_R_GH_path, "R GH - front", 12, 14)
-    full_flow(json_file_R_GH_path_front_small, "R GH - front, small", 12, 14)
-    full_flow(json_file_R_GH_path_side, "R GH - side", 12, 14)
-    full_flow(json_file_R_GH_path_small_side,
-              "R GH - side, small", 12, 14)
+    # full_flow(json_file_R_GH_path, "R GH - front", 12, 14)
+    # full_flow(json_file_R_GH_path_front_small, "R GH - front, small", 12, 14)
+    # full_flow(json_file_R_GH_path_side, "R GH - side", 12, 14)
+    # full_flow(json_file_R_GH_path_small_side,"R GH - side, small", 12, 14)
+    full_flow(json_file_R_hip_path_quad_side, "R hip - side", 24, 26)
+    full_flow(json_file_R_hip_path_quad_side_small,
+              "R hip - side, small", 24, 26)
+    exit()
+
+    landmarks = v2m.run_from_json(json_file_R_GH_path)
+    avg_radius, jt_center, mj_path_array = v2m.new_normalize_joint_center(
+        landmarks, 12, 14, tight_tolerance=False, thin_points=False)
+    smoothed_mvj_points = v2m.smooth_landmarks(mj_path_array)
+    centroid = cars.find_centroid(smoothed_mvj_points)
+    sorted_smoothed_mvj_points = sort_points_by_angle(
+        smoothed_mvj_points, centroid)
+    ss_mvj_path_no_theta = [pt[:3] for pt in sorted_smoothed_mvj_points]
+    ss_mvj_path_by_quadrant = cars.partition_mj_path(
+        jt_center, ss_mvj_path_no_theta)
+    for zone, pts in ss_mvj_path_by_quadrant.items():
+        sorted_zonal_points = sort_points_by_angle(pts, centroid)
+        # calc'ing the angular span for this zone of points
+        spanning_angle_about_rotation = arctan2_angle_between(
+            centroid - sorted_zonal_points[0][:3], centroid - sorted_zonal_points[-1][:3])
+        output = partition_by_displacement(
+            sorted_zonal_points, centroid, angular_span=spanning_angle_about_rotation)
+        displacements = [bucket[1] for bucket in output if bucket[1] != 0]
+        print(
+            f"avg displacement of closest points for zone #{zone}\n--->{avg_displacement(np.array(displacements))}")
+    exit()
