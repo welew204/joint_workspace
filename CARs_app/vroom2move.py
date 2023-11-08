@@ -142,9 +142,9 @@ def new_normalize_joint_center(real_landmarks, target_joint_id, moving_joint_id,
 # HEADS UP: this is the new (Sept '23) version, incorporating mediapipe update (https://developers.google.com/mediapipe/solutions/guide#legacy)
 
 # run serializer
-def save_run_to_json(landmark_array):
+def save_run_to_json(landmark_array, json_name):
     date_string = datetime.datetime.today().strftime("%d_%m_%Y__%H:%M:%S")
-    file_string = f'/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_{date_string}.json'
+    file_string = f'/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_{date_string}__{json_name}.json'
     with open(file_string, 'w') as landmark_json:
         to_json = {}
         for i, pose in enumerate(landmark_array):
@@ -185,7 +185,7 @@ def run_from_json(json_path):
 
 if __name__ == "__main__":
 
-    running_from_vid_file = False
+    running_from_vid_file = True
 
     # video mp run!
     if running_from_vid_file:
@@ -215,18 +215,32 @@ if __name__ == "__main__":
         vid_path_R_gh_front_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_GH_front_small_output.mp4"
         vid_path_R_hip_side_quad = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_hip_quadruped_output.mp4"
         vid_path_R_hip_side_quad_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_hip_quadruped_small_output.mp4"
+        vid_path_L_wrist_front_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/L_wrist_full_1_output.mp4"
+        vid_path_L_wrist_side_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/L_wrist_full_side_output.mp4"
+        vid_path_L_wrist_side_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/L_wrist_small_side_output.mp4"
+        vid_path_L_wrist_full_side_zoomed_out = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/L_wrist_full_side_zoomed_out_output.mp4"
+        vid_path_L_ankle_front_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/L_ankle_front_full_output.mp4"
+        vid_path_L_ankle_front_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/L_ankle_front_small_output.mp4"
+        vid_path_L_ankle_side_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/L_ankle_side_full_output.mp4"
+        vid_path_L_ankle_side_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/L_ankle_side_small_output.mp4"
+        vid_path_L_hip_standing_oblique_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/L_hip_standing_oblique_full_output.mp4"
+        vid_path_L_hip_standing_oblique_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/L_hip_standing_oblique_small_output.mp4"
         # construct landmarker to use (w/ correct options --> see above)
         pose_landmarker = PoseLandmarker.create_from_options(options)
         # build lm_array w/ cv2 > mediapipe.landmarker
         tStart = time.time()
         lm_array = new_process_CARs_vid_from_file(
-            vid_path_R_hip_side_quad_small, pose_landmarker)
+            vid_path_L_hip_standing_oblique_small, pose_landmarker)
 
         tEnd = time.time()
+
+        # NAME the json file you're gonna make....
+        json_filename_string_postfix = "L_hip_standing_oblique_small"
+
         landmarking_time = tEnd - tStart
         print("That took... ", landmarking_time)
         # each run, save to it's own json for easy unpacking/viewing
-        save_run_to_json(lm_array)
+        save_run_to_json(lm_array, json_filename_string_postfix)
         exit()
     else:
         json_file_R_GH_path = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_26_09_2023__11:33:05.json'

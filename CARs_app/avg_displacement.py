@@ -222,17 +222,31 @@ if __name__ == "__main__":
     json_file_R_GH_path_front_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__front_R_gh_small.json"
     json_file_R_hip_path_quad_side = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__side_R_hip_quad.json"
     json_file_R_hip_path_quad_side_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__side_R_hip_quad_small.json"
+    json_file_L_wrist_front_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:06:32__L_wrist_front_full.json"
+    json_file_L_wrist_oblique_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:13:03__L_wrist_oblique_full.json"
+    json_file_L_wrist_oblique_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:14:38__L_wrist_oblique_small.json"
+    json_file_L_wrist_oblique_full_zoomed_out = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:22:46__L_wrist_full_oblique_zoomed_out.json"
+    json_file_L_ankle_front_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:43:28__L_ankle_front_full.json"
+    json_file_L_ankle_front_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:45:04__L_ankle_front_small.json"
+    json_file_L_ankle_side_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:46:22__L_ankle_side_full.json"
+    json_file_L_ankle_side_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:47:27__L_ankle_side_small.json"
+    json_file_L_hip_standing_oblique_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_02_11_2023__13:47:01__L_hip_standing_oblique_full.json"
+    json_file_L_hip_standing_oblique_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_02_11_2023__13:51:03__L_hip_standing_oblique_small.json"
 
     # R gh == 12, R elbow = 14
     # L gh == 11, L elbow = 13
     # R hip == 24, R knee = 26
+    # L hip == 23, L knee = 25
+    # L wrist == 15, L index-tarsal == 19
+    # L ankle == 27, L hallux == 31
     # full_flow(json_file_R_GH_path, "R GH - front", 12, 14)
     # full_flow(json_file_R_GH_path_front_small, "R GH - front, small", 12, 14)
     # full_flow(json_file_R_GH_path_side, "R GH - side", 12, 14)
     # full_flow(json_file_R_GH_path_small_side,"R GH - side, small", 12, 14)
-    full_flow(json_file_R_hip_path_quad_side, "R hip - side", 24, 26)
-    full_flow(json_file_R_hip_path_quad_side_small,
-              "R hip - side, small", 24, 26)
+    full_flow(json_file_L_hip_standing_oblique_full,
+              "L hip - side, full", 23, 25, draw=True)
+    full_flow(json_file_L_hip_standing_oblique_small,
+              "L hip - side, small", 23, 25, draw=True)
     exit()
 
     landmarks = v2m.run_from_json(json_file_R_GH_path)

@@ -587,7 +587,7 @@ def plot_partiton_calc_area(partition_pts, color, plot=True):
 # map resultant workspace-zone onto video??
 if __name__ == "__main__":
     capture_CAR_from_camera = True
-    new_vid_filename = 'R_hip_quadruped_small'
+    new_vid_filename = 'L_ankle_side_small'
     if capture_CAR_from_camera:
         new_CARs_vid(1, new_vid_filename)
         exit()
