@@ -167,8 +167,6 @@ def save_run_to_json(landmark_array, json_name):
 
         json.dump(to_json, landmark_json)
 
-# TODO run deserializer (back into Landmark obj) --> can I just pickle?
-
 
 def run_from_json(json_path):
     with open(json_path, 'r') as landmark_json:
