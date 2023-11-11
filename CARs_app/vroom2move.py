@@ -141,30 +141,38 @@ def new_normalize_joint_center(real_landmarks, target_joint_id, moving_joint_id,
 # - historical and data-analysis of a persons filmed CARs
 # HEADS UP: this is the new (Sept '23) version, incorporating mediapipe update (https://developers.google.com/mediapipe/solutions/guide#legacy)
 
+def create_json(landmark_obj_array):
+    """ this just translates the Landmark objects into agnostic py dict keyed on enumerated element 
+    (so, should be same to frame)"""
+    to_json = {}
+    for i, pose in enumerate(landmark_obj_array):
+        if pose == []:
+            print(f"frame {i} was empty!")
+            continue
+        to_json[i] = {}
+        targ_pose = to_json[i]
+        for j, joint in enumerate(pose[0]):
+            # at some point the POSE is empty? i == 146
+
+            # each joint is a Landmark() object
+            targ_pose[j] = {}
+            targ_joint = targ_pose[j]
+            targ_joint["x"] = joint.x
+            targ_joint["y"] = joint.y
+            targ_joint["z"] = joint.z
+            targ_joint["visibility"] = joint.visibility
+            targ_joint["presence"] = joint.presence
+    return to_json
+
 # run serializer
+
+
 def save_run_to_json(landmark_array, json_name):
     date_string = datetime.datetime.today().strftime("%d_%m_%Y__%H:%M:%S")
     file_string = f'/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_{date_string}__{json_name}.json'
     with open(file_string, 'w') as landmark_json:
-        to_json = {}
-        for i, pose in enumerate(landmark_array):
-            if pose == []:
-                print(f"frame {i} was empty!")
-                continue
-            to_json[i] = {}
-            targ_pose = to_json[i]
-            for j, joint in enumerate(pose[0]):
-                # at some point the POSE is empty? i == 146
-
-                # each joint is a Landmark() object
-                targ_pose[j] = {}
-                targ_joint = targ_pose[j]
-                targ_joint["x"] = joint.x
-                targ_joint["y"] = joint.y
-                targ_joint["z"] = joint.z
-                targ_joint["visibility"] = joint.visibility
-                targ_joint["presence"] = joint.presence
-
+        to_json = create_json(landmark_array)
+        # refactored to it's own function baby
         json.dump(to_json, landmark_json)
 
 

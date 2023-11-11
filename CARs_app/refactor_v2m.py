@@ -74,12 +74,23 @@ def process_CARs_from_video(video_filepath, pose_landmarker):
 
 def serialize_to_json(landmark_dict, json_string_id):
     """INPUT: dictionary, json string identifier that will get added to filepath\n
-    OUTPUT: json file (dumped dictionary)"""
+    OUTPUT: dumps dict to json file (returns filepath of resulting json)"""
     date_string = datetime.datetime.today().strftime("%d-%m-%y_%H%M%S")
     file_string = f"/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__{json_string_id}__{date_string}.json"
     with open(file_string, 'w') as landmark_json:
         # TODO any filtering/processing to slim the dict?
-        json.dump(landmark_dict, landmark_json)
+
+        real_lm_to_json = v2m.create_json([v['real_landmark_result']
+                                           for k, v in landmark_dict.items()])
+        normalized_lm_to_json = v2m.create_json([v['normalized_landmark_result']
+                                                 for k, v in landmark_dict.items()])
+        timestamps = [v["timestamp"] for k, v in landmark_dict.items()]
+        to_json = {i: {
+            "timestamp": timestamps[i],
+            "real_landmark_result": real_lm_to_json[i],
+            "normalized_landmark_result": normalized_lm_to_json[i]} for i in range(len(timestamps))}
+        json.dump(to_json, landmark_json)
+    return file_string
 
 # build from json
 
@@ -88,19 +99,23 @@ def run_from_json(json_path):
     """INPUT: json filepath\n
     OUTPUT: json-loaded dictionary"""
     with open(json_path, 'r') as landmark_json:
-        lmsjson = json.load(landmark_json)
-        return lmsjson
+        lms_from_json = json.load(landmark_json)
+        return lms_from_json
 
 # calc avg_radius, jt_center, mj_path_array
 
+
 # TODO test this shnizzz!
+"""like--actually write some fuggin tests bischhhh"""
 
 
 def process_landmarks(landmark_dict, target_joint_id, moving_joint_id, tight_tolerance=False, thin_points=False):
     """INPUT: landmark dictionary (will get added to, and CHANGED), target and moving joint id's, and flag-options for normalizing ("tight_tolerance", "thin_points"\n
     OUTPUT: json file (dumped dictionary)"""
-    real_landmarks = [[frame, lm["real_landmark_result"]]
-                      for frame, lm in landmark_dict]
+    og_landmark_dict_for_ref = landmark_dict
+    real_landmarks = v2m.create_json([v['real_landmark_result']
+                                      for k, v in landmark_dict.items()])
+
     # ensure that the landmarks in frame_order
     real_landmarks.sort(lambda i: i[0])
     real_landmarks = [i[1] for i in real_landmarks]
@@ -127,4 +142,15 @@ if __name__ == "__main__":
         "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/models/pose_landmarker_heavy.task")
     vid_path_R_gh = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_gh_bare_output.mp4"
     test_result = process_CARs_from_video(vid_path_R_gh, pose_landmarker)
+    test_json_filepath = serialize_to_json(
+        test_result, "test_result_serialized")
+    testing_result_dict = run_from_json(test_json_filepath)
+    testing_result_dict = process_landmarks(testing_result_dict, 12, 14)
+    # R gh == 12, R elbow = 14
+    # L gh == 11, L elbow = 13
+    # R hip == 24, R knee = 26
+    # L hip == 23, L knee = 25
+    # L wrist == 15, L index-tarsal == 19
+    # L ankle == 27, L hallux == 31
+
     exit()
