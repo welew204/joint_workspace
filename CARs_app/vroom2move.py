@@ -44,6 +44,9 @@ def smooth_landmarks(surfaced_mj_path, window_size=5):
     r = l + (window_size)
     end_r = r
     while True:
+        if r >= len(surfaced_mj_path) + end_r:
+            # seeing if setting this stop WHEN r == end_r will result in correct # of points....
+            break
         if l < 0:
             neg_window = surfaced_mj_path[l:]
             pos_window = surfaced_mj_path[:r]
@@ -62,8 +65,6 @@ def smooth_landmarks(surfaced_mj_path, window_size=5):
             pass
         output_array.append(avg_vect)
 
-        if r > len(surfaced_mj_path) + end_r:
-            break
         r += 1
         l += 1
     return np.array(output_array)

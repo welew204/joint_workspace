@@ -5,6 +5,7 @@ import poseDetectionModule as pm
 import datetime
 import json
 import vroom2move as v2m
+import CARs_volume as cars
 
 # work through flow, refactor into version that slowly builds a cumulative dictionary of points
 # test is: can I easily use outputs to work new validation tests
@@ -97,7 +98,7 @@ def serialize_to_json(landmark_dict, json_string_id):
 
 def run_from_json(json_path):
     """INPUT: json filepath\n
-    OUTPUT: json-loaded dictionary"""
+    OUTPUT: json-loaded dictionary (all numeric keys are 'string', not int)"""
     with open(json_path, 'r') as landmark_json:
         lms_from_json = json.load(landmark_json)
         return lms_from_json
@@ -111,41 +112,96 @@ def run_from_json(json_path):
 
 def process_landmarks(landmark_dict, target_joint_id, moving_joint_id, tight_tolerance=False, thin_points=False):
     """INPUT: landmark dictionary (will get added to, and CHANGED), target and moving joint id's, and flag-options for normalizing ("tight_tolerance", "thin_points"\n
-    OUTPUT: json file (dumped dictionary)"""
-    og_landmark_dict_for_ref = landmark_dict
-    real_landmarks = v2m.create_json([v['real_landmark_result']
-                                      for k, v in landmark_dict.items()])
+    OUTPUT: landmark dictionary, w/ keys for each frame (string), plus some aggregated vals (mj_path_array, avg_radius, jt_center, tj_mj_ids)"""
+    # og_landmark_dict_for_ref = copy.deepcopy(landmark_dict)
 
-    # ensure that the landmarks in frame_order
-    real_landmarks.sort(lambda i: i[0])
-    real_landmarks = [i[1] for i in real_landmarks]
+    # first get the list of poses (each a dict)
+    real_lms = [v['real_landmark_result']
+                for k, v in landmark_dict.items()]
+    # then, per pose, add list of joint landmarks (shed the keys)
+    listOfLists_landmarks = []
+    for pose in real_lms:
+        pose_array = [v for k, v in pose.items()]
+        # putting this list of joint positions INTO another list to match other flow
+        # TODO clean this up....
+        listOfLists_landmarks.append([pose_array])
+
     avg_radius, jt_center, mj_path_array = v2m.new_normalize_joint_center(
-        real_landmarks, target_joint_id, moving_joint_id, tight_tolerance=tight_tolerance, thin_points=thin_points)
+        listOfLists_landmarks, target_joint_id, moving_joint_id, tight_tolerance=tight_tolerance, thin_points=thin_points)
     # adding a single mj_position per frame
     for frame, normalized_mj_position in enumerate(mj_path_array):
-        landmark_dict[frame]["norm_mj_position"] = normalized_mj_position
+        landmark_dict[str(frame)]["norm_mj_position"] = normalized_mj_position
+    landmark_dict["mj_path_array"] = mj_path_array
     landmark_dict["avg_radius"] = avg_radius
     landmark_dict["jt_center"] = jt_center
     landmark_dict["tj_mj_ids"] = [target_joint_id, moving_joint_id]
     return landmark_dict
 
-
 # smooth points
+
+
+def add_smoothed_points(landmark_dict, window_size=5):
+    """INPUT: landmark_dict, (opt) size of window to use in smoothing the points;
+    OUTPUT: updated landmark_dict, with smoothed points added PER frame ('smoothed_coord') and as a discrete array ('smoothed_mj_path')"""
+    # TODO filter outliers?
+
+    mj_path_array = landmark_dict["mj_path_array"]
+    smoothed_mvj_points = v2m.smooth_landmarks(
+        mj_path_array, window_size=window_size)
+    # adding each *smoothed* point to the appropriate frame
+
+    # TODO add test to ensure len of smoothed is same as number of frames
+    for p, point in enumerate(smoothed_mvj_points):
+        landmark_dict[str(p)]["smoothed_coord"] = point
+    landmark_dict["smoothed_mj_path"] = smoothed_mvj_points
+
+    return landmark_dict
+
+
 # calc centroid
+def add_centroid(landmark_dict):
+    centroid = cars.find_centroid(landmark_dict["smoothed_mj_path"])
+    landmark_dict["centroid"] = centroid
+    return landmark_dict
+
+
 # sort points (use x-axis of joint as starting point)
+def sort_by_angle(landmark_dict):
+    # transform points to normalized position (stash this in output dict!)
+    # use horizontal frame (x-axis) as 0deg, sort points based on angle
+    # also partition into zones (and add each to landmark_dict?)
+    pass
+
 # partition by displacement
+
+
+def partition_into_angular_buckets(landmark_dict, angular_window_size=3):
+    # scan through sorted/smoothed points and calc max/min, n-of-points
+    pass
+
+
+def calc_avg_displacement(landmark_dict):
+    # use sanitized (sorted/smoothed) points
+    pass
 
 
 # FOR TESTING
 if __name__ == "__main__":
-    pose_landmarker = get_landmarker_with_options(
-        "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/models/pose_landmarker_heavy.task")
-    vid_path_R_gh = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_gh_bare_output.mp4"
-    test_result = process_CARs_from_video(vid_path_R_gh, pose_landmarker)
-    test_json_filepath = serialize_to_json(
-        test_result, "test_result_serialized")
+    from_vid = False
+    if from_vid:
+        pose_landmarker = get_landmarker_with_options(
+            "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/models/pose_landmarker_heavy.task")
+        vid_path_R_gh = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_gh_bare_output.mp4"
+        test_result = process_CARs_from_video(vid_path_R_gh, pose_landmarker)
+        test_json_filepath = serialize_to_json(
+            test_result, "test_result_serialized")
+    else:
+        test_json_filepath = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__test_result_serialized__13-11-23_070941.json"
     testing_result_dict = run_from_json(test_json_filepath)
     testing_result_dict = process_landmarks(testing_result_dict, 12, 14)
+    testing_result_dict = add_smoothed_points(testing_result_dict)
+    testing_result_dict = add_centroid(testing_result_dict)
+
     # R gh == 12, R elbow = 14
     # L gh == 11, L elbow = 13
     # R hip == 24, R knee = 26
