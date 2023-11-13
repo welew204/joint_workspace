@@ -6,6 +6,8 @@ import datetime
 import json
 import vroom2move as v2m
 import CARs_volume as cars
+import avg_displacement as avd
+import collections
 
 # work through flow, refactor into version that slowly builds a cumulative dictionary of points
 # test is: can I easily use outputs to work new validation tests
@@ -158,19 +160,105 @@ def add_smoothed_points(landmark_dict, window_size=5):
     return landmark_dict
 
 
+def determine_quadrant(coord, jt_center, epsilon=.001):
+    """INPUT: point in question (3d coord), jt-center (also 3d coord), epsilon (amount to handle near-zero points; make epsilon larger if I want to treat close values as boundary values)
+    OUTPUT: which zone (0 - 7), int
+    """
+    k_to_q = {"000": 0,
+              "001": 1,
+              "010": 2,
+              "011": 3,
+              "100": 4,
+              "101": 5,
+              "110": 6,
+              "111": 7}
+    q_key = ""
+    # old version that was skewing...
+    q_key += "1" if coord[0] > (jt_center[0]+epsilon) else "0"
+    q_key += "1" if coord[1] > (jt_center[1]+epsilon) else "0"
+    q_key += "1" if coord[2] > (jt_center[2]+epsilon) else "0"
+    return k_to_q[q_key]
+
 # calc centroid
+
+
 def add_centroid(landmark_dict):
     centroid = cars.find_centroid(landmark_dict["smoothed_mj_path"])
     landmark_dict["centroid"] = centroid
     return landmark_dict
 
+# from this SO: https://stackoverflow.com/a/56401672/19589299
+# and described further here: http://johnblackburne.blogspot.com/2012/05/angle-between-two-3d-vectors.html
+
+
+def arctan2_angle_between(v1, v2):
+    arg1 = np.cross(v1, v2)
+    arg2 = np.dot(v1, v2)
+    # guidance from chatGPT
+    arg1_cross = np.linalg.norm(arg1)
+    angle = np.arctan2(arg1_cross, arg2)
+    if arg1[2] < 0:
+        # checking if CROSS product is pointing UP or DOWN (which is erased when calc the norm)
+        angle = -angle
+    if angle < 0:
+        angle += 2*np.pi
+    angle = np.degrees(angle)
+    return angle
 
 # sort points (use x-axis of joint as starting point)
+
+
 def sort_by_angle(landmark_dict):
-    # transform points to normalized position (stash this in output dict!)
+    """INPUT: landmark_dict
+    OUTPUT: updated landmark_dict w/ new 'angle_sorted_array'"""
+    # TODO LATER ....transform points to normalized position (stash this in output dict!)
     # use horizontal frame (x-axis) as 0deg, sort points based on angle
-    # also partition into zones (and add each to landmark_dict?)
-    pass
+    mj_cart_path = landmark_dict["smoothed_mj_path"]
+    centroid = landmark_dict["centroid"]
+    sorted_by_angle = avd.sort_points_by_angle(mj_cart_path, centroid)
+    landmark_dict['angle_sorted_array'] = sorted_by_angle
+
+    return landmark_dict
+
+
+def partition_into_zones(landmark_dict):
+    """INPUT: landmark_dict
+    OUTPUT: add 'zonal_dict' to landmark_dict with an array of smoothed/ang_sorted points in each zone 1-7"""
+    jt_center = landmark_dict['jt_center']
+    sorted_smoothed_points = landmark_dict['angle_sorted_array']
+    zonal_dict = collections.defaultdict(list)
+    i = 0
+    while i < len(sorted_smoothed_points):
+        pt = sorted_smoothed_points[i]
+        zone = determine_quadrant(pt, jt_center)
+        zonal_dict[zone].append(pt)
+        i += 1
+
+    # TODO go thru each zone, sort by angle between axis (which one?) and point
+    # use something like the below to map a zone to a correctly oriented unit-vector,
+    # then use that comparison vector to scale to a vector of radius-r, then find new vector (angle_comparison_vector) connecting to centroid
+    # then use THAT new vector to find angle diff, and sort based on angle diff
+    z_to_edge = {0: [-1, -1, 0],
+                 1: [0, -1, 1],
+                 2: [-1, 1, 0],
+                 3: [0, 1, 1],
+                 4: [0, -1, -1],
+                 5: [1, -1, 0],
+                 6: [0, 1, -1],
+                 7: [1, 1, 0]}
+    for z in zonal_dict:
+        planar_vector = np.array(z_to_edge[z])*landmark_dict["avg_radius"]
+        comparison_vector = landmark_dict["centroid"] - planar_vector
+        zonal_output_array = []
+        for i, pt in enumerate(zonal_dict[z]):
+            ang_between = arctan2_angle_between(comparison_vector, pt)
+            zonal_output_array.append([pt, ang_between])
+        zonal_output_array.sort(key=(lambda x: x[1]))
+        zonal_output_array = [e[0] for e in zonal_output_array]
+        zonal_dict[z] = zonal_output_array
+
+    landmark_dict["zonal_dict"] = zonal_dict
+    return landmark_dict
 
 # partition by displacement
 
