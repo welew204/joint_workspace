@@ -67,6 +67,8 @@ def partition_by_displacement(sorted_mj_array, centroid, angular_span=360, windo
 
     # init the containers for the closest, middle, and furthest 'islands' away from home base
     number_of_windows = int(angular_span // window_size)
+    # this ensures that even if it's a SMALL number of points, there will be ONE bucket to get into
+    number_of_windows = number_of_windows if number_of_windows > 0 else 1
     # [min_norm, Max_norm, n_of_points, (x,y,z)], the coord is of the max
     buckets = [[] for _ in range(number_of_windows)]
     output = [[0, 0, 0, (0, 0, 0)] for _ in range(number_of_windows)]

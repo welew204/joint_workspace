@@ -164,14 +164,14 @@ def determine_quadrant(coord, jt_center, epsilon=.001):
     """INPUT: point in question (3d coord), jt-center (also 3d coord), epsilon (amount to handle near-zero points; make epsilon larger if I want to treat close values as boundary values)
     OUTPUT: which zone (0 - 7), int
     """
-    k_to_q = {"000": 0,
-              "001": 1,
-              "010": 2,
-              "011": 3,
-              "100": 4,
-              "101": 5,
-              "110": 6,
-              "111": 7}
+    k_to_q = {"000": 0,  # [-,-,-]
+              "001": 1,  # [-,-,+]
+              "010": 2,  # [-,+,-]
+              "011": 3,  # [-,+,+]
+              "100": 4,  # [+,-,-]
+              "101": 5,  # [+,-,+]
+              "110": 6,  # [+,+,-]
+              "111": 7}  # [+,+,+]
     q_key = ""
     # old version that was skewing...
     q_key += "1" if coord[0] > (jt_center[0]+epsilon) else "0"
@@ -221,11 +221,26 @@ def sort_by_angle(landmark_dict):
     return landmark_dict
 
 
+def get_zonal_planar_vector(zone, landmark_dict):
+    z_to_edge = {0: [-1, -1, 0],
+                 1: [0, -1, 1],
+                 2: [-1, 1, 0],
+                 3: [0, 1, 1],
+                 4: [0, -1, -1],
+                 5: [1, -1, 0],
+                 6: [0, 1, -1],
+                 7: [1, 1, 0]}
+    planar_vector = np.array(
+        z_to_edge[zone])*landmark_dict["avg_radius"] + landmark_dict["jt_center"]
+    return planar_vector
+
+
 def partition_into_zones(landmark_dict):
     """INPUT: landmark_dict
     OUTPUT: add 'zonal_dict' to landmark_dict with an array of smoothed/ang_sorted points in each zone 1-7"""
     jt_center = landmark_dict['jt_center']
-    sorted_smoothed_points = landmark_dict['angle_sorted_array']
+    sorted_smoothed_points = [elem[:3]
+                              for elem in landmark_dict['angle_sorted_array']]
     zonal_dict = collections.defaultdict(list)
     i = 0
     while i < len(sorted_smoothed_points):
@@ -238,23 +253,19 @@ def partition_into_zones(landmark_dict):
     # use something like the below to map a zone to a correctly oriented unit-vector,
     # then use that comparison vector to scale to a vector of radius-r, then find new vector (angle_comparison_vector) connecting to centroid
     # then use THAT new vector to find angle diff, and sort based on angle diff
-    z_to_edge = {0: [-1, -1, 0],
-                 1: [0, -1, 1],
-                 2: [-1, 1, 0],
-                 3: [0, 1, 1],
-                 4: [0, -1, -1],
-                 5: [1, -1, 0],
-                 6: [0, 1, -1],
-                 7: [1, 1, 0]}
     for z in zonal_dict:
-        planar_vector = np.array(z_to_edge[z])*landmark_dict["avg_radius"]
-        comparison_vector = landmark_dict["centroid"] - planar_vector
+        # trying to sort ALL points in a given zone by their angle away from a planar 'edge'
+        planar_vector = get_zonal_planar_vector(z, landmark_dict)
         zonal_output_array = []
         for i, pt in enumerate(zonal_dict[z]):
-            ang_between = arctan2_angle_between(comparison_vector, pt)
-            zonal_output_array.append([pt, ang_between])
-        zonal_output_array.sort(key=(lambda x: x[1]))
-        zonal_output_array = [e[0] for e in zonal_output_array]
+            ang_between = arctan2_angle_between(planar_vector, pt)
+            ang_between = ang_between if ang_between < 90 else 360.0-ang_between
+            # ang_between2 = arctan2_angle_between(pt, planar_vector)
+            # .....> TOTAL validates that the two angles always together equal ~360
+            # total = ang_between + ang_between2
+            zonal_output_array.append([pt[0], pt[1], pt[2], ang_between])
+        zonal_output_array.sort(key=(lambda x: x[3]))
+
         zonal_dict[z] = zonal_output_array
 
     landmark_dict["zonal_dict"] = zonal_dict
@@ -263,9 +274,28 @@ def partition_into_zones(landmark_dict):
 # partition by displacement
 
 
-def partition_into_angular_buckets(landmark_dict, angular_window_size=3):
+def partition_into_angular_buckets(landmark_dict, angular_window_size=3, by_zone=False):
+    """INPUT: landmark_dict, window_size to consider for partitioning 
+    OUTPUT: landmark_dict updated with FULL path partition and BY_ZONE partition"""
     # scan through sorted/smoothed points and calc max/min, n-of-points
-    pass
+    centroid = landmark_dict['centroid']
+    full_path_output = avd.partition_by_displacement(
+        landmark_dict['angle_sorted_array'], centroid, window_size=angular_window_size)
+    if by_zone:
+        # currently bugging out, want to talk through approach here w/ RKB
+        displacement_by_zone = {}
+        for z in landmark_dict['zonal_dict']:
+            ang_sorted_points_per_zone = landmark_dict['zonal_dict'][z]
+            angle_span = arctan2_angle_between(
+                ang_sorted_points_per_zone[0][:3], ang_sorted_points_per_zone[-1][:3])
+            angle_span = angle_span if angle_span <= 90.0 else 360 - angle_span
+            zonal_output = avd.partition_by_displacement(
+                ang_sorted_points_per_zone, centroid, angular_span=angle_span, window_size=angular_window_size)
+            displacement_by_zone[z] = zonal_output
+        landmark_dict["zonal_displacement_output"] = displacement_by_zone
+    landmark_dict["full_path_displacement_output"] = full_path_output
+
+    return landmark_dict
 
 
 def calc_avg_displacement(landmark_dict):
@@ -289,6 +319,9 @@ if __name__ == "__main__":
     testing_result_dict = process_landmarks(testing_result_dict, 12, 14)
     testing_result_dict = add_smoothed_points(testing_result_dict)
     testing_result_dict = add_centroid(testing_result_dict)
+    testing_result_dict = sort_by_angle(testing_result_dict)
+    testing_result_dict = partition_into_zones(testing_result_dict)
+    testing_result_dict = partition_into_angular_buckets(testing_result_dict)
 
     # R gh == 12, R elbow = 14
     # L gh == 11, L elbow = 13
