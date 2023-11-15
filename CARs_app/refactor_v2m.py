@@ -286,9 +286,11 @@ def partition_into_angular_buckets(landmark_dict, angular_window_size=3, by_zone
         displacement_by_zone = {}
         for z in landmark_dict['zonal_dict']:
             ang_sorted_points_per_zone = landmark_dict['zonal_dict'][z]
-            angle_span = arctan2_angle_between(
-                ang_sorted_points_per_zone[0][:3], ang_sorted_points_per_zone[-1][:3])
-            angle_span = angle_span if angle_span <= 90.0 else 360 - angle_span
+            # PREVIOUS, trying to determine angular_span by finding diff between first and last point, but that sorta shrinks the lense of 'zone'
+            # angle_span = arctan2_angle_between(ang_sorted_points_per_zone[0][:3], ang_sorted_points_per_zone[-1][:3])
+            # angle_span = angle_span if angle_span <= 90.0 else 360 - angle_span
+            # perhaps PER zone should be 90deg span...
+            angle_span = 90.0
             zonal_output = avd.partition_by_displacement(
                 ang_sorted_points_per_zone, centroid, angular_span=angle_span, window_size=angular_window_size)
             displacement_by_zone[z] = zonal_output
@@ -298,9 +300,9 @@ def partition_into_angular_buckets(landmark_dict, angular_window_size=3, by_zone
     return landmark_dict
 
 
-def calc_avg_displacement(landmark_dict):
+def calc_avg_displacement(displacement_array):
     # use sanitized (sorted/smoothed) points
-    pass
+    return np.sum(displacement_array)/len(displacement_array)
 
 
 # FOR TESTING
@@ -321,7 +323,17 @@ if __name__ == "__main__":
     testing_result_dict = add_centroid(testing_result_dict)
     testing_result_dict = sort_by_angle(testing_result_dict)
     testing_result_dict = partition_into_zones(testing_result_dict)
-    testing_result_dict = partition_into_angular_buckets(testing_result_dict)
+    testing_result_dict = partition_into_angular_buckets(
+        testing_result_dict, by_zone=True)
+    displacement_array = [
+        elem[1] for elem in testing_result_dict["full_path_displacement_output"] if elem[1] > 0]
+    avg_displacement = calc_avg_displacement(displacement_array)
+    print(avg_displacement)
+    for zone in testing_result_dict["zonal_displacement_output"]:
+        zonal_avg_displacement = [
+            elem[1] for elem in testing_result_dict["zonal_displacement_output"][zone] if elem[1] > 0]
+        print(f"Zone {zone} avg displacment: ",
+              calc_avg_displacement(zonal_avg_displacement))
 
     # R gh == 12, R elbow = 14
     # L gh == 11, L elbow = 13
