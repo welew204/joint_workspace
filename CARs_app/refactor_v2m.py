@@ -235,6 +235,34 @@ def get_zonal_planar_vector(zone, landmark_dict):
     return planar_vector
 
 
+def get_planar_crossing(vct_a, vct_b, jt_center):
+    k_to_normal = {
+        "100": [0, 1, 0],  # aka crossing the xz axis
+        "010": [1, 0, 0],  # aka crossing the yz axis
+        "001": [0, 0, 1]}  # aka crossing the xy axis
+    q_key = ""
+    # determine which plane is crossed
+    q_key += "1" if min(vct_a[0], vct_b[0]
+                        ) < jt_center[0] < max(vct_a[0], vct_b[0]) else "0"
+    q_key += "1" if min(vct_a[1], vct_b[1]
+                        ) < jt_center[1] < max(vct_a[1], vct_b[1]) else "0"
+    q_key += "1" if min(vct_a[2], vct_b[2]
+                        ) < jt_center[2] < max(vct_a[2], vct_b[2]) else "0"
+    # assert that there's only 1 one in the q_key (aka, only crossing one axis),
+    # crossing two is ok, but should be coerced into ONE crossing or the other (basically, pick)
+    axis_norm = k_to_normal[q_key]
+
+    # finding intersection of a line with a plane
+    # from SO: https://stackoverflow.com/a/18543221
+    diff = vct_a - vct_b
+    dot = np.dot(np.array(axis_norm), diff)
+    # jt_center here is acting as a point on the plane, since it is a point on ANY axial plane
+    w = vct_a - jt_center
+    factor = -np.dot(axis_norm, w) / dot
+    u = diff * factor
+    return vct_a + u
+
+
 def partition_into_zones(landmark_dict):
     """INPUT: landmark_dict
     OUTPUT: add 'zonal_dict' to landmark_dict with an array of smoothed/ang_sorted points in each zone 1-7"""
@@ -245,7 +273,17 @@ def partition_into_zones(landmark_dict):
     i = 0
     while i < len(sorted_smoothed_points):
         pt = sorted_smoothed_points[i]
+        # there SHOULDn't be back/forth over the axis since I have sorted by angle!
+
+        # calc the intersection of interpolating vector with axis plane, stash this in seperate dict keyed on zone
         zone = determine_quadrant(pt, jt_center)
+        if i == 0:
+            prev_zone = zone
+        elif prev_zone != zone:
+            # we have a boundary cross!
+            diff_vector = sorted_smoothed_points[i] - \
+                sorted_smoothed_points[i-1]
+
         zonal_dict[zone].append(pt)
         i += 1
 
@@ -307,6 +345,14 @@ def calc_avg_displacement(displacement_array):
 
 # FOR TESTING
 if __name__ == "__main__":
+    """ 
+    TEST CASE for get_planar_crossing()"""
+    test_vect_a = np.array([1, 1, 1])
+    test_vect_b = np.array([1, 1, -1])
+    planar_intersect = get_planar_crossing(
+        test_vect_a, test_vect_b, np.array([0, 0, 0]))
+    print(planar_intersect)
+
     from_vid = False
     if from_vid:
         pose_landmarker = get_landmarker_with_options(
