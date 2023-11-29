@@ -79,7 +79,7 @@ def partition_by_displacement(sorted_mj_array, centroid, angular_span=360, windo
         theta = pt[3] - starting_theta
         bucket = int(theta // window_size)
         buckets[bucket].append(np.array(pt[:3]))
-    print()
+
     for i, sample in enumerate(buckets):
         if len(sample) == 0:
             # case: no points in this angular range

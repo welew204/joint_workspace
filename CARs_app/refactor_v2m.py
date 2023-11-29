@@ -235,21 +235,34 @@ def get_zonal_planar_vector(zone, landmark_dict):
     return planar_vector
 
 
-def get_planar_crossing(vct_a, vct_b, jt_center):
+def get_planar_crossing(vct_a, vct_b, jt_center, epsilon=.001):
     k_to_normal = {
         "100": [0, 1, 0],  # aka crossing the xz axis
         "010": [1, 0, 0],  # aka crossing the yz axis
         "001": [0, 0, 1]}  # aka crossing the xy axis
-    q_key = ""
-    # determine which plane is crossed
-    q_key += "1" if min(vct_a[0], vct_b[0]
-                        ) < jt_center[0] < max(vct_a[0], vct_b[0]) else "0"
-    q_key += "1" if min(vct_a[1], vct_b[1]
-                        ) < jt_center[1] < max(vct_a[1], vct_b[1]) else "0"
-    q_key += "1" if min(vct_a[2], vct_b[2]
-                        ) < jt_center[2] < max(vct_a[2], vct_b[2]) else "0"
+
+    def sort_points(vct_a, vct_b, jt_center, epsilon):
+        q_key = ""
+        # determine which plane is crossed
+        q_key += "1" if min(vct_a[0], vct_b[0]
+                            ) < (jt_center[0]+epsilon) < max(vct_a[0], vct_b[0]) else "0"
+        q_key += "1" if min(vct_a[1], vct_b[1]
+                            ) < (jt_center[1]+epsilon) < max(vct_a[1], vct_b[1]) else "0"
+        q_key += "1" if min(vct_a[2], vct_b[2]
+                            ) < (jt_center[2]+epsilon) < max(vct_a[2], vct_b[2]) else "0"
+        return q_key
     # assert that there's only 1 one in the q_key (aka, only crossing one axis),
-    # crossing two is ok, but should be coerced into ONE crossing or the other (basically, pick)
+    # crossing two is ok, but should be coerced into ONE crossing --> the SECOND ONE (as this will preceed the upcomign zone)
+    # coercion!!
+    # keep splitting the difference-vector in half, and look
+    # TOWARD the vect_b until you get a q_key that is 3 digits w/ only 1 "1"
+    q_key = sort_points(vct_a, vct_b, jt_center, epsilon)
+    while q_key.count("1") > 1:
+        midway = (vct_b + vct_a) / 2
+        q_key = sort_points(midway, vct_b, jt_center, epsilon)
+
+    assert len(q_key) == 3 and q_key.count(
+        "1") == 1, "the key MUST only indicate one border crossing"
     axis_norm = k_to_normal[q_key]
 
     # finding intersection of a line with a plane
@@ -270,9 +283,11 @@ def partition_into_zones(landmark_dict):
     sorted_smoothed_points = [elem[:3]
                               for elem in landmark_dict['angle_sorted_array']]
     zonal_dict = collections.defaultdict(list)
+    # to store interpolated points, keyed on what zone it should get used for!
+    zonal_crossings = {}
     i = 0
     while i < len(sorted_smoothed_points):
-        pt = sorted_smoothed_points[i]
+        pt = np.array(sorted_smoothed_points[i])
         # there SHOULDn't be back/forth over the axis since I have sorted by angle!
 
         # calc the intersection of interpolating vector with axis plane, stash this in seperate dict keyed on zone
@@ -281,8 +296,10 @@ def partition_into_zones(landmark_dict):
             prev_zone = zone
         elif prev_zone != zone:
             # we have a boundary cross!
-            diff_vector = sorted_smoothed_points[i] - \
-                sorted_smoothed_points[i-1]
+            pre_pt = np.array(sorted_smoothed_points[i-1])
+            interpolated_point = get_planar_crossing(pre_pt, pt, jt_center)
+            zonal_crossings[zone] = interpolated_point
+            prev_zone = zone
 
         zonal_dict[zone].append(pt)
         i += 1
@@ -294,9 +311,11 @@ def partition_into_zones(landmark_dict):
     for z in zonal_dict:
         # trying to sort ALL points in a given zone by their angle away from a planar 'edge'
         planar_vector = get_zonal_planar_vector(z, landmark_dict)
+        # V2, getting interpolated zone crossing to use as planar 'edge'
+        planar_crossing = zonal_crossings[z]
         zonal_output_array = []
         for i, pt in enumerate(zonal_dict[z]):
-            ang_between = arctan2_angle_between(planar_vector, pt)
+            ang_between = arctan2_angle_between(planar_crossing, pt)
             ang_between = ang_between if ang_between < 90 else 360.0-ang_between
             # ang_between2 = arctan2_angle_between(pt, planar_vector)
             # .....> TOTAL validates that the two angles always together equal ~360
@@ -307,6 +326,7 @@ def partition_into_zones(landmark_dict):
         zonal_dict[z] = zonal_output_array
 
     landmark_dict["zonal_dict"] = zonal_dict
+    landmark_dict["zonal_crossings"] = zonal_crossings
     return landmark_dict
 
 # partition by displacement
@@ -347,11 +367,11 @@ def calc_avg_displacement(displacement_array):
 if __name__ == "__main__":
     """ 
     TEST CASE for get_planar_crossing()"""
-    test_vect_a = np.array([1, 1, 1])
+    """ test_vect_a = np.array([1, 1, 1])
     test_vect_b = np.array([1, 1, -1])
     planar_intersect = get_planar_crossing(
         test_vect_a, test_vect_b, np.array([0, 0, 0]))
-    print(planar_intersect)
+    print(planar_intersect) """
 
     from_vid = False
     if from_vid:
@@ -374,7 +394,7 @@ if __name__ == "__main__":
     displacement_array = [
         elem[1] for elem in testing_result_dict["full_path_displacement_output"] if elem[1] > 0]
     avg_displacement = calc_avg_displacement(displacement_array)
-    print(avg_displacement)
+    print("Joint avg displacment: ", avg_displacement)
     for zone in testing_result_dict["zonal_displacement_output"]:
         zonal_avg_displacement = [
             elem[1] for elem in testing_result_dict["zonal_displacement_output"][zone] if elem[1] > 0]
