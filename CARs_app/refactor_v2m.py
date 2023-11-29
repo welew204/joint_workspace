@@ -363,6 +363,35 @@ def calc_avg_displacement(displacement_array):
     return np.sum(displacement_array)/len(displacement_array)
 
 
+def full_flow(json_filepath, target_joint_id, moving_joint_id):
+    """INPUT: a json file-path to a pre-processed to create result_dict
+    OUTPUT: a finished result_dict with all the fixins (sorted array, zonal partition)"""
+    result_dict = run_from_json(json_filepath)
+    result_dict = process_landmarks(
+        result_dict, target_joint_id, moving_joint_id)
+    result_dict = add_smoothed_points(result_dict)
+    result_dict = add_centroid(result_dict)
+    result_dict = sort_by_angle(result_dict)
+    result_dict = partition_into_zones(result_dict)
+    result_dict = partition_into_angular_buckets(
+        result_dict, by_zone=True)
+    return result_dict
+
+
+def print_avg_displacements(results_dict, zones=False):
+    displacement_array = [
+        elem[1] for elem in results_dict["full_path_displacement_output"] if elem[1] > 0]
+    avg_displacement = calc_avg_displacement(displacement_array)
+    print(
+        f"{path.split('__')[1][:-5]} joint avg displacment: ", avg_displacement)
+    if zone:
+        for zone in results_dict["zonal_displacement_output"]:
+            zonal_avg_displacement = [
+                elem[1] for elem in results_dict["zonal_displacement_output"][zone] if elem[1] > 0]
+            print(f"Zone {zone} avg displacment: ",
+                  calc_avg_displacement(zonal_avg_displacement))
+
+
 # FOR TESTING
 if __name__ == "__main__":
     """ 
@@ -373,34 +402,24 @@ if __name__ == "__main__":
         test_vect_a, test_vect_b, np.array([0, 0, 0]))
     print(planar_intersect) """
 
-    from_vid = False
-    if from_vid:
-        pose_landmarker = get_landmarker_with_options(
-            "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/models/pose_landmarker_heavy.task")
-        vid_path_R_gh = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_gh_bare_output.mp4"
-        test_result = process_CARs_from_video(vid_path_R_gh, pose_landmarker)
-        test_json_filepath = serialize_to_json(
-            test_result, "test_result_serialized")
-    else:
-        test_json_filepath = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__test_result_serialized__13-11-23_070941.json"
-    testing_result_dict = run_from_json(test_json_filepath)
-    testing_result_dict = process_landmarks(testing_result_dict, 12, 14)
-    testing_result_dict = add_smoothed_points(testing_result_dict)
-    testing_result_dict = add_centroid(testing_result_dict)
-    testing_result_dict = sort_by_angle(testing_result_dict)
-    testing_result_dict = partition_into_zones(testing_result_dict)
-    testing_result_dict = partition_into_angular_buckets(
-        testing_result_dict, by_zone=True)
-    displacement_array = [
-        elem[1] for elem in testing_result_dict["full_path_displacement_output"] if elem[1] > 0]
-    avg_displacement = calc_avg_displacement(displacement_array)
-    print("Joint avg displacment: ", avg_displacement)
-    for zone in testing_result_dict["zonal_displacement_output"]:
-        zonal_avg_displacement = [
-            elem[1] for elem in testing_result_dict["zonal_displacement_output"][zone] if elem[1] > 0]
-        print(f"Zone {zone} avg displacment: ",
-              calc_avg_displacement(zonal_avg_displacement))
+    json_file_R_GH_path = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_26_09_2023__11:33:05.json'
+    json_file_R_GH_path_small_side = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_27_09_2023__small_R_GH.json'
+    json_file_R_GH_path_side = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_27_09_2023__side_R_GH.json'
+    json_file_R_GH_path_front_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__front_R_gh_small.json"
+    json_file_R_hip_path_quad_side = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__side_R_hip_quad.json"
+    json_file_R_hip_path_quad_side_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__side_R_hip_quad_small.json"
+    json_file_L_wrist_front_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:06:32__L_wrist_front_full.json"
+    json_file_L_wrist_oblique_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:13:03__L_wrist_oblique_full.json"
+    json_file_L_wrist_oblique_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:14:38__L_wrist_oblique_small.json"
+    json_file_L_wrist_oblique_full_zoomed_out = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:22:46__L_wrist_full_oblique_zoomed_out.json"
+    json_file_L_ankle_front_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:43:28__L_ankle_front_full.json"
+    json_file_L_ankle_front_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:45:04__L_ankle_front_small.json"
+    json_file_L_ankle_side_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:46:22__L_ankle_side_full.json"
+    json_file_L_ankle_side_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:47:27__L_ankle_side_small.json"
+    json_file_L_hip_standing_oblique_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_02_11_2023__13:47:01__L_hip_standing_oblique_full.json"
+    json_file_L_hip_standing_oblique_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_02_11_2023__13:51:03__L_hip_standing_oblique_small.json"
 
+    # for your convenience:
     # R gh == 12, R elbow = 14
     # L gh == 11, L elbow = 13
     # R hip == 24, R knee = 26
@@ -408,4 +427,54 @@ if __name__ == "__main__":
     # L wrist == 15, L index-tarsal == 19
     # L ankle == 27, L hallux == 31
 
-    exit()
+    """working validations (run lots of these of same joints, look at results)"""
+    """same CAR, diff angles"""
+    for path in [json_file_R_GH_path, json_file_R_GH_path_side]:
+        results_dict = full_flow(path, 12, 14)
+        print_avg_displacements(results_dict, zones=True)
+
+    """same angle, diff CAR size"""
+    for path in [json_file_R_GH_path, json_file_R_GH_path_front_small]:
+        results_dict = full_flow(path, 12, 14)
+        print_avg_displacements(results_dict, zones=True)
+
+    testing = False
+    if testing == True:
+
+        from_vid = False
+        if from_vid:
+            pose_landmarker = get_landmarker_with_options(
+                "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/models/pose_landmarker_heavy.task")
+            vid_path_R_gh = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs/R_gh_bare_output.mp4"
+            test_result = process_CARs_from_video(
+                vid_path_R_gh, pose_landmarker)
+            test_json_filepath = serialize_to_json(
+                test_result, "test_result_serialized")
+        else:
+            test_json_filepath = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__test_result_serialized__13-11-23_070941.json"
+        testing_result_dict = run_from_json(test_json_filepath)
+        testing_result_dict = process_landmarks(testing_result_dict, 12, 14)
+        testing_result_dict = add_smoothed_points(testing_result_dict)
+        testing_result_dict = add_centroid(testing_result_dict)
+        testing_result_dict = sort_by_angle(testing_result_dict)
+        testing_result_dict = partition_into_zones(testing_result_dict)
+        testing_result_dict = partition_into_angular_buckets(
+            testing_result_dict, by_zone=True)
+        displacement_array = [
+            elem[1] for elem in testing_result_dict["full_path_displacement_output"] if elem[1] > 0]
+        avg_displacement = calc_avg_displacement(displacement_array)
+        print("Joint avg displacment: ", avg_displacement)
+        for zone in testing_result_dict["zonal_displacement_output"]:
+            zonal_avg_displacement = [
+                elem[1] for elem in testing_result_dict["zonal_displacement_output"][zone] if elem[1] > 0]
+            print(f"Zone {zone} avg displacment: ",
+                  calc_avg_displacement(zonal_avg_displacement))
+
+        # R gh == 12, R elbow = 14
+        # L gh == 11, L elbow = 13
+        # R hip == 24, R knee = 26
+        # L hip == 23, L knee = 25
+        # L wrist == 15, L index-tarsal == 19
+        # L ankle == 27, L hallux == 31
+
+        exit()
