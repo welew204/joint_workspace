@@ -142,13 +142,14 @@ def new_normalize_joint_center(real_landmarks, target_joint_id, moving_joint_id,
 # - historical and data-analysis of a persons filmed CARs
 # HEADS UP: this is the new (Sept '23) version, incorporating mediapipe update (https://developers.google.com/mediapipe/solutions/guide#legacy)
 
-def create_json(landmark_obj_array):
+def create_json(landmark_obj_array, verbose=False):
     """ this just translates the Landmark objects into agnostic py dict keyed on enumerated element 
     (so, should be same to frame)"""
     to_json = {}
     for i, pose in enumerate(landmark_obj_array):
         if pose == []:
-            print(f"frame {i} was empty!")
+            if verbose:
+                print(f"frame {i} was empty!")
             continue
         to_json[i] = {}
         targ_pose = to_json[i]

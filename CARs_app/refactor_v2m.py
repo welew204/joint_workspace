@@ -8,6 +8,7 @@ import vroom2move as v2m
 import CARs_volume as cars
 import avg_displacement as avd
 import collections
+import os
 
 # work through flow, refactor into version that slowly builds a cumulative dictionary of points
 # test is: can I easily use outputs to work new validation tests
@@ -78,7 +79,7 @@ def process_CARs_from_video(video_filepath, pose_landmarker):
 def serialize_to_json(landmark_dict, json_string_id):
     """INPUT: dictionary, json string identifier that will get added to filepath\n
     OUTPUT: dumps dict to json file (returns filepath of resulting json)"""
-    date_string = datetime.datetime.today().strftime("%d-%m-%y_%H%M%S")
+    date_string = datetime.datetime.today().strftime("%m_%d_%y")
     file_string = f"/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__{json_string_id}__{date_string}.json"
     with open(file_string, 'w') as landmark_json:
         # TODO any filtering/processing to slim the dict?
@@ -87,11 +88,13 @@ def serialize_to_json(landmark_dict, json_string_id):
                                            for k, v in landmark_dict.items()])
         normalized_lm_to_json = v2m.create_json([v['normalized_landmark_result']
                                                  for k, v in landmark_dict.items()])
-        timestamps = [v["timestamp"] for k, v in landmark_dict.items()]
+        timestamps = [v["timestamp"]
+                      for k, v in landmark_dict.items() if k in real_lm_to_json]
+        # only adding a timestamp that corresponds with a NON-empty pose
         to_json = {i: {
-            "timestamp": timestamps[i],
+            "timestamp": i*50,
             "real_landmark_result": real_lm_to_json[i],
-            "normalized_landmark_result": normalized_lm_to_json[i]} for i in range(len(timestamps))}
+            "normalized_landmark_result": normalized_lm_to_json[i]} for i in [int(t/50) for t in timestamps]}
         json.dump(to_json, landmark_json)
     return file_string
 
@@ -132,6 +135,9 @@ def process_landmarks(landmark_dict, target_joint_id, moving_joint_id, tight_tol
         listOfLists_landmarks, target_joint_id, moving_joint_id, tight_tolerance=tight_tolerance, thin_points=thin_points)
     # adding a single mj_position per frame
     for frame, normalized_mj_position in enumerate(mj_path_array):
+        # handling case of missing frame (not enough values at some point along pipeline)
+        if str(frame) not in landmark_dict:
+            continue
         landmark_dict[str(frame)]["norm_mj_position"] = normalized_mj_position
     landmark_dict["mj_path_array"] = mj_path_array
     landmark_dict["avg_radius"] = avg_radius
@@ -154,6 +160,9 @@ def add_smoothed_points(landmark_dict, window_size=5):
 
     # TODO add test to ensure len of smoothed is same as number of frames
     for p, point in enumerate(smoothed_mvj_points):
+        # handling case of missing frame (not enough values at some point along pipeline)
+        if str(p) not in landmark_dict:
+            continue
         landmark_dict[str(p)]["smoothed_coord"] = point
     landmark_dict["smoothed_mj_path"] = smoothed_mvj_points
 
@@ -382,14 +391,21 @@ def print_avg_displacements(results_dict, zones=False):
     displacement_array = [
         elem[1] for elem in results_dict["full_path_displacement_output"] if elem[1] > 0]
     avg_displacement = calc_avg_displacement(displacement_array)
-    print(
-        f"{path.split('__')[1][:-5]} joint avg displacment: ", avg_displacement)
-    if zone:
+    print("   joint avg displacment: ", avg_displacement)
+    if zones:
         for zone in results_dict["zonal_displacement_output"]:
             zonal_avg_displacement = [
                 elem[1] for elem in results_dict["zonal_displacement_output"][zone] if elem[1] > 0]
-            print(f"Zone {zone} avg displacment: ",
+            print(f"   Zone {zone} avg displacment: ",
                   calc_avg_displacement(zonal_avg_displacement))
+
+
+# not used....
+def video_to_json(video_filepath, pose_landmarker):
+    video_description = video_filepath[video_filepath.rfind("/"):-4]
+    run_result = process_CARs_from_video(video_filepath, pose_landmarker)
+    json_result_filepath = serialize_to_json(run_result, video_description)
+    return json_result_filepath
 
 
 # FOR TESTING
@@ -402,22 +418,24 @@ if __name__ == "__main__":
         test_vect_a, test_vect_b, np.array([0, 0, 0]))
     print(planar_intersect) """
 
-    json_file_R_GH_path = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_26_09_2023__11:33:05.json'
-    json_file_R_GH_path_small_side = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_27_09_2023__small_R_GH.json'
-    json_file_R_GH_path_side = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_27_09_2023__side_R_GH.json'
-    json_file_R_GH_path_front_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__front_R_gh_small.json"
-    json_file_R_hip_path_quad_side = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__side_R_hip_quad.json"
-    json_file_R_hip_path_quad_side_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_04_10_2023__side_R_hip_quad_small.json"
-    json_file_L_wrist_front_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:06:32__L_wrist_front_full.json"
-    json_file_L_wrist_oblique_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:13:03__L_wrist_oblique_full.json"
-    json_file_L_wrist_oblique_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:14:38__L_wrist_oblique_small.json"
-    json_file_L_wrist_oblique_full_zoomed_out = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:22:46__L_wrist_full_oblique_zoomed_out.json"
-    json_file_L_ankle_front_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:43:28__L_ankle_front_full.json"
-    json_file_L_ankle_front_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:45:04__L_ankle_front_small.json"
-    json_file_L_ankle_side_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:46:22__L_ankle_side_full.json"
-    json_file_L_ankle_side_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_01_11_2023__16:47:27__L_ankle_side_small.json"
-    json_file_L_hip_standing_oblique_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_02_11_2023__13:47:01__L_hip_standing_oblique_full.json"
-    json_file_L_hip_standing_oblique_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/lm_runs_json/sample_landmarks_02_11_2023__13:51:03__L_hip_standing_oblique_small.json"
+    json_file_L_wrist_front_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_wrist_full_1__12_01_23.json"
+    json_file_L_wrist_side_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_wrist_full_side__12_01_23.json"
+    json_file_L_wrist_side_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_wrist_small_side__12_01_23.json"
+    json_file_L_wrist_side_full_zoomed_out = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_wrist_full_side_zoomed_out__12_01_23.json"
+
+    json_file_R_GH_front_path = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__R_gh__12_01_23.json'
+    json_file_R_GH_front_bare = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__R_gh_bare__12_01_23.json'
+    json_file_R_GH_front_small = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__R_GH_front_small__12_01_23.json'
+    json_file_R_GH_side_full = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__R_GH_side__12_01_23.json'
+    json_file_R_GH_side_small = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__R_GH_small__12_01_23.json'
+
+    json_file_L_hip_standing_oblique_small = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_hip_standing_oblique_small__12_01_23.json'
+    json_file_L_hip_standing_oblique_full = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_hip_standing_oblique_full__12_01_23.json'
+    json_file_R_hip_quadruped_full = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__R_hip_quadruped__12_01_23.json'
+    json_file_L_ankle_side_full = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_ankle_side_full__12_01_23.json'
+    json_file_L_ankle_side_small = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_ankle_side_small__12_01_23.json'
+    json_file_L_ankle_front_full = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_ankle_front_full__12_01_23.json'
+    json_file_L_ankle_front_small = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_ankle_front_small__12_01_23.json'
 
     # for your convenience:
     # R gh == 12, R elbow = 14
@@ -426,11 +444,26 @@ if __name__ == "__main__":
     # L hip == 23, L knee = 25
     # L wrist == 15, L index-tarsal == 19
     # L ankle == 27, L hallux == 31
+    bulk_serialize = False
+    if bulk_serialize:
+        CARs_directory = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/sample_CARs"
+        for filename in os.listdir(CARs_directory):
+            pose_landmarker = get_landmarker_with_options(
+                "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/models/pose_landmarker_heavy.task")
+            f = os.path.join(CARs_directory, filename)
+            run_result = process_CARs_from_video(f, pose_landmarker)
+            json_result_filepath = serialize_to_json(
+                run_result, filename[:-11])
+            print(json_result_filepath)
+
+        exit()
 
     """working validations (run lots of these of same joints, look at results)"""
     """same CAR, diff angles"""
-    for path in [json_file_R_GH_path, json_file_R_GH_path_side]:
+    for path in [json_file_R_GH_front_bare, json_file_R_GH_front_small]:
         results_dict = full_flow(path, 12, 14)
+        joint_value = path.split('__')[1]
+        print(joint_value, "......")
         print_avg_displacements(results_dict, zones=True)
 
     """same angle, diff CAR size"""
