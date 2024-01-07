@@ -270,6 +270,8 @@ def get_planar_crossing(vct_a, vct_b, jt_center, epsilon=.001):
         midway = (vct_b + vct_a) / 2
         q_key = sort_points(midway, vct_b, jt_center, epsilon)
 
+    # TODO RKB thinks I should care about 'closing' the A-side zone (find a planar crossing); slackers rule!
+
     assert len(q_key) == 3 and q_key.count(
         "1") == 1, "the key MUST only indicate one border crossing"
     axis_norm = k_to_normal[q_key]
@@ -343,7 +345,7 @@ def partition_into_zones(landmark_dict):
 
 def partition_into_angular_buckets(landmark_dict, angular_window_size=3, by_zone=False):
     """INPUT: landmark_dict, window_size to consider for partitioning 
-    OUTPUT: landmark_dict updated with FULL path partition and BY_ZONE partition"""
+    OUTPUT: landmark_dict updated with FULL path partition and BY_ZONE partition (opt flag)"""
     # scan through sorted/smoothed points and calc max/min, n-of-points
     centroid = landmark_dict['centroid']
     full_path_output = avd.partition_by_displacement(
@@ -417,25 +419,41 @@ if __name__ == "__main__":
     planar_intersect = get_planar_crossing(
         test_vect_a, test_vect_b, np.array([0, 0, 0]))
     print(planar_intersect) """
+    CARs_directory = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/"
 
-    json_file_L_wrist_front_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_wrist_full_1__12_01_23.json"
-    json_file_L_wrist_side_full = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_wrist_full_side__12_01_23.json"
-    json_file_L_wrist_side_small = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_wrist_small_side__12_01_23.json"
-    json_file_L_wrist_side_full_zoomed_out = "/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_wrist_full_side_zoomed_out__12_01_23.json"
+    json_file_L_wrist_front_full = CARs_directory + \
+        "landmarks__L_wrist_full_1__12_01_23.json"
+    json_file_L_wrist_side_full = CARs_directory + \
+        "landmarks__L_wrist_full_side__12_01_23.json"
+    json_file_L_wrist_side_small = CARs_directory + \
+        "landmarks__L_wrist_small_side__12_01_23.json"
+    json_file_L_wrist_side_full_zoomed_out = CARs_directory + \
+        "landmarks__L_wrist_full_side_zoomed_out__12_01_23.json"
 
-    json_file_R_GH_front_path = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__R_gh__12_01_23.json'
-    json_file_R_GH_front_bare = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__R_gh_bare__12_01_23.json'
-    json_file_R_GH_front_small = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__R_GH_front_small__12_01_23.json'
-    json_file_R_GH_side_full = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__R_GH_side__12_01_23.json'
-    json_file_R_GH_side_small = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__R_GH_small__12_01_23.json'
+    json_file_R_GH_front_path = CARs_directory + 'landmarks__R_gh__12_01_23.json'
+    json_file_R_GH_front_bare = CARs_directory + \
+        'landmarks__R_gh_bare__12_01_23.json'
+    json_file_R_GH_front_small = CARs_directory + \
+        'landmarks__R_GH_front_small__12_01_23.json'
+    json_file_R_GH_side_full = CARs_directory + \
+        'landmarks__R_GH_side__12_01_23.json'
+    json_file_R_GH_side_small = CARs_directory + \
+        'landmarks__R_GH_small__12_01_23.json'
 
-    json_file_L_hip_standing_oblique_small = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_hip_standing_oblique_small__12_01_23.json'
-    json_file_L_hip_standing_oblique_full = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_hip_standing_oblique_full__12_01_23.json'
-    json_file_R_hip_quadruped_full = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__R_hip_quadruped__12_01_23.json'
-    json_file_L_ankle_side_full = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_ankle_side_full__12_01_23.json'
-    json_file_L_ankle_side_small = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_ankle_side_small__12_01_23.json'
-    json_file_L_ankle_front_full = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_ankle_front_full__12_01_23.json'
-    json_file_L_ankle_front_small = '/Users/williamhbelew/Hacking/ocv_playground/CARs_app/json_lm_store/landmarks__L_ankle_front_small__12_01_23.json'
+    json_file_L_hip_standing_oblique_small = CARs_directory + \
+        'landmarks__L_hip_standing_oblique_small__12_01_23.json'
+    json_file_L_hip_standing_oblique_full = CARs_directory + \
+        'landmarks__L_hip_standing_oblique_full__12_01_23.json'
+    json_file_R_hip_quadruped_full = CARs_directory + \
+        'landmarks__R_hip_quadruped__12_01_23.json'
+    json_file_L_ankle_side_full = CARs_directory + \
+        'landmarks__L_ankle_side_full__12_01_23.json'
+    json_file_L_ankle_side_small = CARs_directory + \
+        'landmarks__L_ankle_side_small__12_01_23.json'
+    json_file_L_ankle_front_full = CARs_directory + \
+        'landmarks__L_ankle_front_full__12_01_23.json'
+    json_file_L_ankle_front_small = CARs_directory + \
+        'landmarks__L_ankle_front_small__12_01_23.json'
 
     # for your convenience:
     # R gh == 12, R elbow = 14
@@ -459,7 +477,7 @@ if __name__ == "__main__":
         exit()
 
     """working validations (run lots of these of same joints, look at results)"""
-    """same CAR, diff angles"""
+    """same CAR, diff angles (or camera frame)"""
     for path in [json_file_R_GH_front_bare, json_file_R_GH_front_small]:
         results_dict = full_flow(path, 12, 14)
         joint_value = path.split('__')[1]
@@ -470,6 +488,8 @@ if __name__ == "__main__":
     for path in [json_file_R_GH_path, json_file_R_GH_path_front_small]:
         results_dict = full_flow(path, 12, 14)
         print_avg_displacements(results_dict, zones=True)
+
+    """ validate the zonal analysis """
 
     testing = False
     if testing == True:
